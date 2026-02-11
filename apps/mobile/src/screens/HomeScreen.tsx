@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import {useAuthStore, useVoiceStore} from '../lib/store';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
@@ -107,52 +108,55 @@ export default function HomeScreen() {
       {/* Status text */}
       <Text style={styles.statusText}>{getStatusText()}</Text>
 
-      {/* Response text (shows as agent speaks) */}
+      {/* Response text (scrollable so button stays visible) */}
       {(lastTranscription || lastResponse) && (
-        <View style={styles.responseArea}>
+        <ScrollView style={styles.responseScroll} contentContainerStyle={styles.responseScrollContent}>
           {lastTranscription && (
             <Text style={styles.transcription}>You: {lastTranscription}</Text>
           )}
           {lastResponse && (
             <Text style={styles.responseText}>{lastResponse}</Text>
           )}
-        </View>
+        </ScrollView>
       )}
 
-      {/* Waveform placeholder */}
-      <View style={styles.waveformArea}>
-        <Text style={styles.waveformPlaceholder}>
-          {isRecording || isPlaying ? '~~~~~~~~~~~~' : ''}
-        </Text>
-      </View>
-
-      {/* Voice button */}
-      {isProcessing || isPlaying ? (
-        <Pressable style={styles.stopButton} onPress={handleStopPress}>
-          <Text style={styles.voiceButtonText}>STOP</Text>
-        </Pressable>
-      ) : (
-        <Pressable
-          style={({pressed}) => [
-            styles.voiceButton,
-            pressed && styles.voiceButtonPressed,
-            isRecording && styles.voiceButtonRecording,
-            !hasCredits && styles.voiceButtonDisabled,
-          ]}
-          disabled={!hasCredits}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}>
-          <Text style={styles.voiceButtonText}>
-            {isRecording ? 'RELEASE\nTO SEND' : 'HOLD\nTO TALK'}
+      {/* Bottom area pinned */}
+      <View style={styles.bottomArea}>
+        {/* Waveform placeholder */}
+        <View style={styles.waveformArea}>
+          <Text style={styles.waveformPlaceholder}>
+            {isRecording || isPlaying ? '~~~~~~~~~~~~' : ''}
           </Text>
-        </Pressable>
-      )}
+        </View>
 
-      {!hasCredits && (
-        <Text style={styles.noCredits}>
-          Not enough credits. Upgrade your plan.
-        </Text>
-      )}
+        {/* Voice button */}
+        {isProcessing || isPlaying ? (
+          <Pressable style={styles.stopButton} onPress={handleStopPress}>
+            <Text style={styles.voiceButtonText}>STOP</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({pressed}) => [
+              styles.voiceButton,
+              pressed && styles.voiceButtonPressed,
+              isRecording && styles.voiceButtonRecording,
+              !hasCredits && styles.voiceButtonDisabled,
+            ]}
+            disabled={!hasCredits}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}>
+            <Text style={styles.voiceButtonText}>
+              {isRecording ? 'RELEASE\nTO SEND' : 'HOLD\nTO TALK'}
+            </Text>
+          </Pressable>
+        )}
+
+        {!hasCredits && (
+          <Text style={styles.noCredits}>
+            Not enough credits. Upgrade your plan.
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -233,10 +237,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 24,
   },
-  responseArea: {
-    paddingHorizontal: 24,
+  responseScroll: {
+    flex: 1,
     marginTop: 16,
     width: '100%',
+  },
+  responseScrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 8,
   },
   transcription: {
     color: '#666',
@@ -249,10 +257,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  bottomArea: {
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
   waveformArea: {
     height: 40,
     justifyContent: 'center',
-    marginTop: 16,
   },
   waveformPlaceholder: {
     color: '#ff6b35',

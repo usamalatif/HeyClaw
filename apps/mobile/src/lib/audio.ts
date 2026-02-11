@@ -49,18 +49,37 @@ export function playAudioFile(filePath: string): Promise<void> {
   });
 }
 
+// Pre-written file cache: write next chunk while current one plays
+const preparedFiles = new Map<number, string>();
+
+/**
+ * Write a base64 audio chunk to a temp file (for pre-buffering)
+ */
+export async function prepareAudioChunk(
+  base64Data: string,
+  chunkIndex: number,
+): Promise<void> {
+  const tempPath = `${RNFS.CachesDirectoryPath}/heyclaw_chunk_${chunkIndex}.mp3`;
+  await RNFS.writeFile(tempPath, base64Data, 'base64');
+  preparedFiles.set(chunkIndex, tempPath);
+}
+
 /**
  * Play audio from a base64-encoded mp3 string
- * Writes to a temp file, plays it, then cleans up
+ * Uses pre-written file if available, otherwise writes then plays
  */
 export async function playBase64Audio(
   base64Data: string,
   chunkIndex: number,
 ): Promise<void> {
-  const tempPath = `${RNFS.CachesDirectoryPath}/heyclaw_chunk_${chunkIndex}.mp3`;
+  let tempPath = preparedFiles.get(chunkIndex);
 
-  // Write base64 audio to temp file
-  await RNFS.writeFile(tempPath, base64Data, 'base64');
+  if (!tempPath) {
+    tempPath = `${RNFS.CachesDirectoryPath}/heyclaw_chunk_${chunkIndex}.mp3`;
+    await RNFS.writeFile(tempPath, base64Data, 'base64');
+  } else {
+    preparedFiles.delete(chunkIndex);
+  }
 
   // Play the file
   await playAudioFile(tempPath);
@@ -71,6 +90,16 @@ export async function playBase64Audio(
   } catch {
     // Ignore cleanup errors
   }
+}
+
+/**
+ * Clean up any remaining prepared files
+ */
+export function clearPreparedAudio(): void {
+  for (const [, path] of preparedFiles) {
+    RNFS.unlink(path).catch(() => {});
+  }
+  preparedFiles.clear();
 }
 
 /**

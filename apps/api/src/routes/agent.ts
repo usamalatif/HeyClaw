@@ -124,6 +124,37 @@ agentRoutes.post('/voice', async (c) => {
       let sentenceIndex = 0;
       let fullText = '';
 
+      // TTS runs as a background pipeline — doesn't block text streaming
+      const ttsQueue: {sentence: string; index: number}[] = [];
+      let ttsRunning = false;
+      let ttsFinishResolve: (() => void) | null = null;
+
+      const processTTSQueue = async () => {
+        ttsRunning = true;
+        while (ttsQueue.length > 0) {
+          const item = ttsQueue.shift()!;
+          const audioBase64 = await chunkToSpeech(item.sentence, ttsVoice);
+          await stream.writeSSE({
+            data: JSON.stringify({type: 'audio', data: audioBase64, index: item.index}),
+            event: 'chunk',
+          });
+        }
+        ttsRunning = false;
+        ttsFinishResolve?.();
+      };
+
+      const queueTTS = (sentence: string, index: number) => {
+        ttsQueue.push({sentence, index});
+        if (!ttsRunning) {
+          processTTSQueue();
+        }
+      };
+
+      const waitForTTS = () =>
+        ttsRunning || ttsQueue.length > 0
+          ? new Promise<void>(r => { ttsFinishResolve = r; })
+          : Promise.resolve();
+
       const flushSentences = async (force: boolean) => {
         const sentences = force
           ? (buffer.trim() ? [buffer.trim()] : [])
@@ -141,19 +172,23 @@ agentRoutes.post('/voice', async (c) => {
         }
 
         for (const sentence of sentences) {
+          // Send text immediately — no waiting for TTS
           await stream.writeSSE({
             data: JSON.stringify({type: 'text', data: sentence, index: sentenceIndex}),
             event: 'chunk',
           });
-
-          const audioBase64 = await chunkToSpeech(sentence, ttsVoice);
-          await stream.writeSSE({
-            data: JSON.stringify({type: 'audio', data: audioBase64, index: sentenceIndex}),
-            event: 'chunk',
-          });
-
+          // Queue TTS in background — doesn't block
+          queueTTS(sentence, sentenceIndex);
           sentenceIndex++;
         }
+      };
+
+      // Stream text tokens to client immediately for instant display
+      const sendToken = async (token: string) => {
+        await stream.writeSSE({
+          data: JSON.stringify({type: 'token', data: token}),
+          event: 'chunk',
+        });
       };
 
       // Try OpenClaw streaming, fallback to direct API
@@ -165,6 +200,7 @@ agentRoutes.post('/voice', async (c) => {
           usedOpenClaw = true;
           buffer += chunk;
           fullText += chunk;
+          await sendToken(chunk);
 
           if (/[.!?]\s/.test(buffer)) {
             await flushSentences(false);
@@ -177,6 +213,7 @@ agentRoutes.post('/voice', async (c) => {
           for await (const chunk of fallbackStream) {
             buffer += chunk;
             fullText += chunk;
+            await sendToken(chunk);
 
             if (/[.!?]\s/.test(buffer)) {
               await flushSentences(false);
@@ -186,6 +223,8 @@ agentRoutes.post('/voice', async (c) => {
       }
 
       await flushSentences(true);
+      // Wait for all TTS to finish before sending done
+      await waitForTTS();
 
       const newCredits = user.credits_remaining - creditCost;
       await supabase

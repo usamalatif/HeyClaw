@@ -8,9 +8,97 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  ActivityIndicator,
 } from 'react-native';
-import {useAuthStore} from '../lib/store';
+import {useAuthStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
+
+// Renders text with **bold** markdown support
+function FormattedText({
+  children,
+  style,
+}: {
+  children: string;
+  style: any;
+}) {
+  const parts = children.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <Text style={style}>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return (
+            <Text key={i} style={{fontWeight: '700'}}>
+              {part.slice(2, -2)}
+            </Text>
+          );
+        }
+        return part;
+      })}
+    </Text>
+  );
+}
+
+function TypingIndicator() {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animate = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(dot, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+    const a1 = animate(dot1, 0);
+    const a2 = animate(dot2, 150);
+    const a3 = animate(dot3, 300);
+    a1.start();
+    a2.start();
+    a3.start();
+
+    return () => {
+      a1.stop();
+      a2.stop();
+      a3.stop();
+    };
+  }, [dot1, dot2, dot3]);
+
+  const dotStyle = (dot: Animated.Value) => ({
+    opacity: dot.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
+    transform: [
+      {
+        translateY: dot.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -4],
+        }),
+      },
+    ],
+  });
+
+  return (
+    <View style={[styles.bubble, styles.assistantBubble, styles.typingBubble]}>
+      <Text style={styles.bubbleAvatar}>🦞</Text>
+      <View style={styles.dotsRow}>
+        <Animated.View style={[styles.dot, dotStyle(dot1)]} />
+        <Animated.View style={[styles.dot, dotStyle(dot2)]} />
+        <Animated.View style={[styles.dot, dotStyle(dot3)]} />
+      </View>
+    </View>
+  );
+}
 
 interface Message {
   id: string;
@@ -22,46 +110,85 @@ interface Message {
 const MODEL_CREDITS = {standard: 10, power: 30, best: 100} as const;
 
 export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const {messages, setMessages, updateLastMessage, sessionId, setSessionId} =
+    useChatStore();
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(!sessionId);
+  const [isWaiting, setIsWaiting] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingRef = useRef<NodeJS.Timeout | null>(null);
+  const flatListRef = useRef<FlatList>(null);
+  const prevCountRef = useRef(messages.length);
   const {selectedModel, deductCredits, profile} = useAuthStore();
+
+  // Clean up typing animation on unmount
+  useEffect(() => {
+    return () => {
+      if (typingRef.current) clearInterval(typingRef.current);
+    };
+  }, []);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({animated: true});
+      }, 50);
+    }
+  }, [messages]);
 
   const creditsPerMsg = MODEL_CREDITS[selectedModel];
   const hasCredits = (profile?.creditsRemaining ?? 0) >= creditsPerMsg;
 
   // Load or create chat session on mount
   useEffect(() => {
+    if (sessionId) {
+      setInitialLoading(false);
+      return;
+    }
     const loadSession = async () => {
       try {
         const sessions = await api.getSessions();
         if (sessions.length > 0) {
           const session = await api.getSession(sessions[0].id);
-          sessionIdRef.current = session.id;
+          setSessionId(session.id);
           if (session.messages?.length > 0) {
             setMessages(session.messages);
           }
         } else {
           const session = await api.createSession();
-          sessionIdRef.current = session.id;
+          setSessionId(session.id);
         }
       } catch {
         // Offline or error — continue without persistence
+      } finally {
+        setInitialLoading(false);
       }
     };
     loadSession();
-  }, []);
+  }, [sessionId, setSessionId, setMessages]);
 
   const saveMessages = useCallback(async (msgs: Message[]) => {
-    if (!sessionIdRef.current || msgs.length === 0) return;
+    if (!sessionId || msgs.length === 0) return;
     try {
       const title = msgs[0]?.content.slice(0, 50) || 'New Chat';
-      await api.updateSession(sessionIdRef.current, {messages: msgs, title});
+      await api.updateSession(sessionId, {messages: msgs, title});
     } catch {
       // Save failed silently
     }
-  }, []);
+  }, [sessionId]);
+
+  // Auto-save when voice messages arrive from the shared store
+  useEffect(() => {
+    if (messages.length > prevCountRef.current && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.isVoice && lastMsg.role === 'assistant') {
+        saveMessages(messages);
+      }
+    }
+    prevCountRef.current = messages.length;
+  }, [messages, saveMessages]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -76,27 +203,48 @@ export default function ChatScreen() {
     setMessages(withUser);
     setInput('');
     setLoading(true);
+    setIsWaiting(true);
 
     try {
       const res = await api.sendMessage(text, selectedModel);
+      setIsWaiting(false);
       deductCredits(creditsPerMsg);
 
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: res.response,
-      };
-      const withAssistant = [...withUser, assistantMsg];
-      setMessages(withAssistant);
-      saveMessages(withAssistant);
+      const fullText: string = res.response;
+      const assistantMsgId = (Date.now() + 1).toString();
+
+      // Add empty assistant message, then animate typing
+      setMessages([
+        ...withUser,
+        {id: assistantMsgId, role: 'assistant', content: ''},
+      ]);
+      setIsTyping(true);
+
+      let charIndex = 0;
+      typingRef.current = setInterval(() => {
+        charIndex += 2;
+        if (charIndex >= fullText.length) {
+          clearInterval(typingRef.current!);
+          typingRef.current = null;
+          const finalMsgs: Message[] = [
+            ...withUser,
+            {id: assistantMsgId, role: 'assistant', content: fullText},
+          ];
+          setMessages(finalMsgs);
+          saveMessages(finalMsgs);
+          setIsTyping(false);
+          setLoading(false);
+        } else {
+          updateLastMessage(fullText.slice(0, charIndex));
+        }
+      }, 12);
     } catch (err: any) {
-      const errorMsg: Message = {
+      setIsWaiting(false);
+      useChatStore.getState().addMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: `Error: ${err.message}`,
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
+      });
       setLoading(false);
     }
   };
@@ -113,10 +261,17 @@ export default function ChatScreen() {
         </Text>
       </View>
 
+      {initialLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#ff6b35" />
+        </View>
+      ) : (
       <FlatList
+        ref={flatListRef}
         data={messages}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.messageList}
+        ListFooterComponent={isWaiting ? <TypingIndicator /> : null}
         renderItem={({item}) => (
           <View
             style={[
@@ -126,7 +281,7 @@ export default function ChatScreen() {
             {item.role === 'assistant' && (
               <Text style={styles.bubbleAvatar}>🦞</Text>
             )}
-            <Text
+            <FormattedText
               style={[
                 styles.bubbleText,
                 item.role === 'user'
@@ -134,11 +289,17 @@ export default function ChatScreen() {
                   : styles.assistantBubbleText,
               ]}>
               {item.content}
-            </Text>
+            </FormattedText>
+            {isTyping &&
+              item.role === 'assistant' &&
+              item.id === messages[messages.length - 1]?.id && (
+                <Text style={styles.cursor}>▌</Text>
+              )}
             {item.isVoice && <Text style={styles.voiceIcon}>🎤</Text>}
           </View>
         )}
       />
+      )}
 
       <View style={styles.inputBar}>
         <TextInput
@@ -187,6 +348,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ff6b35',
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   messageList: {
     padding: 16,
@@ -261,5 +427,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
+  },
+  cursor: {
+    color: '#ff6b35',
+    fontWeight: '300',
+  },
+  typingBubble: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#666',
   },
 });

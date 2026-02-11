@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {useAuthStore} from '../lib/store';
 import {supabase} from '../lib/supabase';
+import {api} from '../lib/api';
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
@@ -17,8 +18,43 @@ const PLAN_LABELS: Record<string, string> = {
   ultra: 'Ultra — $179.99/mo',
 };
 
+const VOICES = [
+  {id: 'alloy', label: 'Alloy'},
+  {id: 'ash', label: 'Ash'},
+  {id: 'coral', label: 'Coral'},
+  {id: 'echo', label: 'Echo'},
+  {id: 'fable', label: 'Fable'},
+  {id: 'nova', label: 'Nova'},
+  {id: 'onyx', label: 'Onyx'},
+  {id: 'sage', label: 'Sage'},
+  {id: 'shimmer', label: 'Shimmer'},
+];
+
+const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
+
 export default function SettingsScreen() {
   const {profile, setSession, setProfile} = useAuthStore();
+  const [saving, setSaving] = useState(false);
+
+  const currentVoice = profile?.ttsVoice || 'alloy';
+  const currentSpeed = profile?.ttsSpeed ?? 1.0;
+
+  const updateSetting = async (field: string, value: any) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const updated = await api.updateMe({[field]: value});
+      setProfile({
+        ...profile!,
+        ttsVoice: updated.tts_voice ?? profile!.ttsVoice,
+        ttsSpeed: updated.tts_speed ?? profile!.ttsSpeed,
+      });
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure?', [
@@ -56,7 +92,7 @@ export default function SettingsScreen() {
             {PLAN_LABELS[profile?.plan ?? 'free']}
           </Text>
         </View>
-        <View style={styles.row}>
+        <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>Credits</Text>
           <Text style={styles.valueHighlight}>
             {profile?.creditsRemaining ?? 0} / {profile?.creditsMonthlyLimit ?? 50}
@@ -70,29 +106,53 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Agent section */}
-      <Text style={styles.sectionHeader}>AGENT</Text>
-      <View style={styles.card}>
-        <TouchableOpacity style={styles.row}>
-          <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>
-            {profile?.agentName ?? 'HeyClaw'} {'>'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Voice section */}
+      {/* Voice selection */}
       <Text style={styles.sectionHeader}>VOICE</Text>
       <View style={styles.card}>
-        <TouchableOpacity style={styles.row}>
-          <Text style={styles.label}>Voice</Text>
-          <Text style={styles.value}>
-            {profile?.ttsVoice ?? 'Default'} {'>'}
-          </Text>
-        </TouchableOpacity>
-        <View style={styles.row}>
-          <Text style={styles.label}>Speed</Text>
-          <Text style={styles.value}>{profile?.ttsSpeed ?? 1.0}x</Text>
+        <View style={styles.voiceGrid}>
+          {VOICES.map(v => (
+            <TouchableOpacity
+              key={v.id}
+              style={[
+                styles.voiceChip,
+                currentVoice === v.id && styles.voiceChipActive,
+              ]}
+              onPress={() => updateSetting('tts_voice', v.id)}
+              disabled={saving}>
+              <Text
+                style={[
+                  styles.voiceChipText,
+                  currentVoice === v.id && styles.voiceChipTextActive,
+                ]}>
+                {v.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Speed selection */}
+      <Text style={styles.sectionHeader}>SPEED</Text>
+      <View style={styles.card}>
+        <View style={styles.speedRow}>
+          {SPEEDS.map(s => (
+            <TouchableOpacity
+              key={s}
+              style={[
+                styles.speedChip,
+                currentSpeed === s && styles.speedChipActive,
+              ]}
+              onPress={() => updateSetting('tts_speed', s)}
+              disabled={saving}>
+              <Text
+                style={[
+                  styles.speedChipText,
+                  currentSpeed === s && styles.speedChipTextActive,
+                ]}>
+                {s}x
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
@@ -142,6 +202,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#222',
   },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
   label: {
     color: '#fff',
     fontSize: 15,
@@ -167,6 +230,61 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  voiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 12,
+    gap: 8,
+  },
+  voiceChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  voiceChipActive: {
+    backgroundColor: '#ff6b35',
+    borderColor: '#ff6b35',
+  },
+  voiceChipText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  voiceChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  speedRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+    justifyContent: 'space-between',
+  },
+  speedChip: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+  speedChipActive: {
+    backgroundColor: '#ff6b35',
+    borderColor: '#ff6b35',
+  },
+  speedChipText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  speedChipTextActive: {
+    color: '#fff',
+    fontWeight: '600',
   },
   signOutButton: {
     marginHorizontal: 16,

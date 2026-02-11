@@ -1,8 +1,10 @@
 import {useCallback, useRef} from 'react';
-import {useAuthStore, useVoiceStore} from './store';
+import {useAuthStore, useVoiceStore, useChatStore} from './store';
 import {supabase} from './supabase';
 import {
   playBase64Audio,
+  prepareAudioChunk,
+  clearPreparedAudio,
   stopPlayback,
   getRecordingUri,
 } from './audio';
@@ -63,12 +65,19 @@ export function useVoiceFlow() {
         const event = JSON.parse(jsonStr);
 
         switch (event.type) {
-          case 'text':
-            fullTextRef.value += event.data + ' ';
+          case 'token':
+            // Instant token-by-token display
+            fullTextRef.value += event.data;
             setLastResponse(fullTextRef.value.trim());
             break;
 
+          case 'text':
+            // Sentence-level (used for TTS grouping) — text already shown via tokens
+            break;
+
           case 'audio':
+            // Pre-write to disk immediately so playback starts faster
+            prepareAudioChunk(event.data, event.index);
             audioQueueRef.current.push({
               index: event.index,
               base64: event.data,
@@ -199,9 +208,29 @@ export function useVoiceFlow() {
         const {text: transcribedText} = await transcribeRes.json();
         setLastTranscription(transcribedText);
 
+        // Add user voice message to chat history
+        const userMsgId = Date.now().toString();
+        useChatStore.getState().addMessage({
+          id: userMsgId,
+          role: 'user',
+          content: transcribedText,
+          isVoice: true,
+        });
+
         // Step 2: Stream agent response with audio
         setProcessing(false);
         await streamAgentResponse(transcribedText);
+
+        // Add assistant response to chat history
+        const finalResponse = useVoiceStore.getState().lastResponse;
+        if (finalResponse) {
+          useChatStore.getState().addMessage({
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: finalResponse,
+            isVoice: true,
+          });
+        }
       } catch (err: any) {
         console.error('Voice flow error:', err.message);
         setProcessing(false);
@@ -225,6 +254,7 @@ export function useVoiceFlow() {
     xhrRef.current = null;
     audioQueueRef.current = [];
     isPlayingRef.current = false;
+    clearPreparedAudio();
     await stopPlayback();
     setProcessing(false);
     setPlaying(false);

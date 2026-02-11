@@ -69,6 +69,40 @@ interface VoiceState {
   setLastResponse: (text: string | null) => void;
 }
 
+// Shared chat messages — used by both ChatScreen and voice flow
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  isVoice?: boolean;
+}
+
+interface ChatState {
+  messages: ChatMessage[];
+  sessionId: string | null;
+  setMessages: (messages: ChatMessage[]) => void;
+  addMessage: (message: ChatMessage) => void;
+  updateLastMessage: (content: string) => void;
+  setSessionId: (id: string | null) => void;
+}
+
+export const useChatStore = create<ChatState>(set => ({
+  messages: [],
+  sessionId: null,
+  setMessages: messages => set({messages}),
+  addMessage: message =>
+    set(state => ({messages: [...state.messages, message]})),
+  updateLastMessage: content =>
+    set(state => {
+      const updated = [...state.messages];
+      if (updated.length > 0) {
+        updated[updated.length - 1] = {...updated[updated.length - 1], content};
+      }
+      return {messages: updated};
+    }),
+  setSessionId: sessionId => set({sessionId}),
+}));
+
 export const useVoiceStore = create<VoiceState>(set => ({
   isRecording: false,
   isProcessing: false,

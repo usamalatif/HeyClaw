@@ -38,6 +38,11 @@ async function request<T>(
 export const api = {
   // User
   getMe: () => request<any>('/user/me'),
+  updateMe: (data: Record<string, any>) =>
+    request<any>('/user/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
   getCredits: () => request<any>('/user/credits'),
 
   // Agent

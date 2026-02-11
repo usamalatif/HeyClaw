@@ -2627,6 +2627,11 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
+  - RNNotifee (9.1.8):
+    - React-Core
+    - RNNotifee/NotifeeCore (= 9.1.8)
+  - RNNotifee/NotifeeCore (9.1.8):
+    - React-Core
   - RNScreens (4.23.0):
     - boost
     - DoubleConversion
@@ -2775,6 +2780,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../../../node_modules/react-native/ReactCommon`)
   - RNFS (from `../../../node_modules/react-native-fs`)
   - RNKeychain (from `../../../node_modules/react-native-keychain`)
+  - "RNNotifee (from `../../../node_modules/@notifee/react-native`)"
   - RNScreens (from `../../../node_modules/react-native-screens`)
   - SocketRocket (~> 0.7.1)
   - TextToSpeech (from `../../../node_modules/react-native-tts`)
@@ -2950,6 +2956,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native-fs"
   RNKeychain:
     :path: "../../../node_modules/react-native-keychain"
+  RNNotifee:
+    :path: "../../../node_modules/@notifee/react-native"
   RNScreens:
     :path: "../../../node_modules/react-native-screens"
   TextToSpeech:
@@ -3040,6 +3048,7 @@ SPEC CHECKSUMS:
   ReactCommon: ac934cb340aee91282ecd6f273a26d24d4c55cae
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
   RNKeychain: 483402cf2b90647eb0cf569cebbc069d32addea4
+  RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
   RNScreens: afaf526a9c804c3b4503f950cf3e67ed81e29ada
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b

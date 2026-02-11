@@ -7,6 +7,7 @@ import {
   clearPreparedAudio,
   stopPlayback,
 } from './audio';
+import {notifyResponseReady} from './notifications';
 import {API_URL} from './config';
 
 // Full voice conversation flow:
@@ -91,9 +92,12 @@ export function useVoiceFlow() {
             }
             break;
 
-          case 'done':
+          case 'done': {
             deductCredits(event.creditsUsed);
+            const agentName = useAuthStore.getState().profile?.agentName;
+            notifyResponseReady(agentName);
             break;
+          }
 
           case 'error':
             console.error('Agent error:', event.message);

@@ -132,8 +132,8 @@ agentRoutes.post('/voice', async (c) => {
       const processTTSQueue = async () => {
         ttsRunning = true;
         while (ttsQueue.length > 0) {
-          // Process up to 2 TTS requests in parallel for speed
-          const batch = ttsQueue.splice(0, Math.min(2, ttsQueue.length));
+          // Process up to 3 TTS requests in parallel for speed
+          const batch = ttsQueue.splice(0, Math.min(3, ttsQueue.length));
           const results = await Promise.all(
             batch.map(item =>
               chunkToSpeech(item.sentence, ttsVoice)
@@ -211,8 +211,11 @@ agentRoutes.post('/voice', async (c) => {
           fullText += chunk;
           await sendToken(chunk);
 
-          // Flush on sentence endings, or on clause boundaries when buffer is long
-          if (/[.!?]\s/.test(buffer) || (buffer.length > 50 && /[,;:]\s/.test(buffer))) {
+          // Eager first flush: send first ~25 chars to TTS immediately
+          // so audio starts generating while LLM is still streaming
+          if (sentenceIndex === 0 && buffer.length > 25) {
+            await flushSentences(true);
+          } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
             await flushSentences(false);
           }
         }
@@ -225,7 +228,9 @@ agentRoutes.post('/voice', async (c) => {
             fullText += chunk;
             await sendToken(chunk);
 
-            if (/[.!?]\s/.test(buffer)) {
+            if (sentenceIndex === 0 && buffer.length > 25) {
+              await flushSentences(true);
+            } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
               await flushSentences(false);
             }
           }

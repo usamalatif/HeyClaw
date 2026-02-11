@@ -4,6 +4,7 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {supabase} from './src/lib/supabase';
 import {useAuthStore} from './src/lib/store';
 import {api} from './src/lib/api';
+import {requestNotificationPermission, startAppStateTracking} from './src/lib/notifications';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function App() {
@@ -28,6 +29,13 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, [setSession]);
+
+  // Request notification permission + track app foreground/background
+  useEffect(() => {
+    requestNotificationPermission();
+    const cleanup = startAppStateTracking();
+    return cleanup;
+  }, []);
 
   // Load user profile when session changes
   useEffect(() => {

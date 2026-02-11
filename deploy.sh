@@ -23,19 +23,15 @@ if [ ! -f .env.production ]; then
     exit 1
 fi
 
-echo "1/4 Building OpenClaw agent image..."
+echo "1/3 Building OpenClaw agent image..."
 docker build -t heyclaw-agent:latest -f infrastructure/fly/agent.Dockerfile infrastructure/fly/
 
 echo ""
-echo "2/4 Building HeyClaw API image..."
+echo "2/3 Building HeyClaw API image..."
 docker compose build api
 
 echo ""
-echo "3/4 Creating Docker network..."
-docker network create heyclaw 2>/dev/null || true
-
-echo ""
-echo "4/4 Starting HeyClaw API..."
+echo "3/3 Starting HeyClaw API..."
 docker compose up -d api
 
 echo ""

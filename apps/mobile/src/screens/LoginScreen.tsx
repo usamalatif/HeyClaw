@@ -14,20 +14,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-
-  const sendMagicLink = async () => {
-    if (!email.trim()) return;
-    setLoading(true);
-    const {error} = await supabase.auth.signInWithOtp({email: email.trim()});
-    setLoading(false);
-
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      Alert.alert('Check your email', 'We sent you a magic link to sign in.');
-    }
-  };
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const signInWithPassword = async () => {
     if (!email.trim() || !password.trim()) return;
@@ -38,6 +25,29 @@ export default function LoginScreen() {
     });
     setLoading(false);
     if (error) Alert.alert('Error', error.message);
+  };
+
+  const signUp = async () => {
+    if (!email.trim() || !password.trim()) return;
+    if (password.trim().length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+    setLoading(true);
+    const {data, error} = await supabase.auth.signUp({
+      email: email.trim(),
+      password: password.trim(),
+      options: {emailRedirectTo: undefined},
+    });
+    setLoading(false);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else if (data.session) {
+      // Auto-signed in (email confirmation disabled)
+    } else {
+      Alert.alert('Account created', 'You can now sign in.');
+      setIsSignUp(false);
+    }
   };
 
   const signInWithApple = async () => {
@@ -68,44 +78,31 @@ export default function LoginScreen() {
         onChangeText={setEmail}
       />
 
-      {showPassword && (
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#666"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-      )}
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        placeholderTextColor="#666"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
 
-      {showPassword ? (
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={signInWithPassword}
-          disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={sendMagicLink}
-          disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Send Magic Link</Text>
-          )}
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity
+        style={styles.primaryButton}
+        onPress={isSignUp ? signUp : signInWithPassword}
+        disabled={loading}>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryButtonText}>
+            {isSignUp ? 'Create Account' : 'Sign In'}
+          </Text>
+        )}
+      </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
         <Text style={styles.toggleText}>
-          {showPassword ? 'Use magic link instead' : 'Sign in with password'}
+          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
         </Text>
       </TouchableOpacity>
 

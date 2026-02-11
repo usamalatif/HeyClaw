@@ -5,7 +5,7 @@ const API_ENV: 'local' | 'production' = 'production';
 
 const API_URLS = {
   local: 'http://192.168.1.25:3000',
-  production: 'http://YOUR_SERVER_IP:3000', // Replace with your server's public IP
+  production: 'http://93.115.26.164:3000',
 };
 
 export const API_URL = API_URLS[API_ENV];

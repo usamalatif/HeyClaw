@@ -45,6 +45,8 @@
 	<string>hjk</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>HeyClaw needs access to your microphone to send voice messages to your AI agent.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>HeyClaw uses speech recognition to convert your voice to text for faster responses.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

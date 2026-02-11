@@ -4,7 +4,7 @@ import {authMiddleware} from '../middleware/auth.js';
 import {supabase} from '../lib/supabase.js';
 import type {AppEnv} from '../lib/types.js';
 import type {ModelTier} from '@heyclaw/shared';
-import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
+import {generateSpeech, splitIntoSentences} from '../services/tts.js';
 import {createAgentContainer, startAgentContainer} from '../services/dockerProvisioner.js';
 import {chatCompletion, streamChatCompletion} from '../services/chat.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
@@ -86,7 +86,7 @@ agentRoutes.post('/message', async c => {
 // Streaming voice endpoint — SSE with text + audio chunks
 agentRoutes.post('/voice', async (c) => {
   const userId = c.get('userId');
-  const {text, modelTier = 'standard', voice} = await c.req.json();
+  const {text, modelTier = 'standard', voice, nativeTts = false} = await c.req.json();
 
   if (!text?.trim()) {
     return c.json({message: 'Message text is required'}, 400);
@@ -124,37 +124,6 @@ agentRoutes.post('/voice', async (c) => {
       let sentenceIndex = 0;
       let fullText = '';
 
-      // TTS runs as a background pipeline — doesn't block text streaming
-      const ttsQueue: {sentence: string; index: number}[] = [];
-      let ttsRunning = false;
-      let ttsFinishResolve: (() => void) | null = null;
-
-      const processTTSQueue = async () => {
-        ttsRunning = true;
-        while (ttsQueue.length > 0) {
-          const item = ttsQueue.shift()!;
-          const audioBase64 = await chunkToSpeech(item.sentence, ttsVoice);
-          await stream.writeSSE({
-            data: JSON.stringify({type: 'audio', data: audioBase64, index: item.index}),
-            event: 'chunk',
-          });
-        }
-        ttsRunning = false;
-        ttsFinishResolve?.();
-      };
-
-      const queueTTS = (sentence: string, index: number) => {
-        ttsQueue.push({sentence, index});
-        if (!ttsRunning) {
-          processTTSQueue();
-        }
-      };
-
-      const waitForTTS = () =>
-        ttsRunning || ttsQueue.length > 0
-          ? new Promise<void>(r => { ttsFinishResolve = r; })
-          : Promise.resolve();
-
       const flushSentences = async (force: boolean) => {
         const sentences = force
           ? (buffer.trim() ? [buffer.trim()] : [])
@@ -172,13 +141,10 @@ agentRoutes.post('/voice', async (c) => {
         }
 
         for (const sentence of sentences) {
-          // Send text immediately — no waiting for TTS
           await stream.writeSSE({
             data: JSON.stringify({type: 'text', data: sentence, index: sentenceIndex}),
             event: 'chunk',
           });
-          // Queue TTS in background — doesn't block
-          queueTTS(sentence, sentenceIndex);
           sentenceIndex++;
         }
       };
@@ -223,8 +189,20 @@ agentRoutes.post('/voice', async (c) => {
       }
 
       await flushSentences(true);
-      // Wait for all TTS to finish before sending done
-      await waitForTTS();
+
+      // Generate ElevenLabs TTS for the full response (skip if native TTS)
+      if (!nativeTts && fullText.trim()) {
+        try {
+          const audioBase64 = await generateSpeech(fullText.trim(), ttsVoice);
+          await stream.writeSSE({
+            data: JSON.stringify({type: 'audio', data: audioBase64, index: 0}),
+            event: 'chunk',
+          });
+        } catch (ttsErr: any) {
+          console.error('TTS generation failed:', ttsErr.message);
+          // Continue without audio — text already delivered
+        }
+      }
 
       const newCredits = user.credits_remaining - creditCost;
       await supabase

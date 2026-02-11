@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import {useAuthStore, useVoiceStore} from '../lib/store';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
-import {startRecording, stopRecording, cancelRecording} from '../lib/audio';
+import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} from '../lib/audio';
 
 const MODEL_CREDITS = {standard: 10, power: 30, best: 100} as const;
 
@@ -36,27 +36,33 @@ export default function HomeScreen() {
     return 'HOLD\nTO TALK';
   };
 
+  const setLastTranscription = useVoiceStore(s => s.setLastTranscription);
+
   const handlePressIn = async () => {
     try {
-      await startRecording();
+      setLastTranscription(null);
+      await startSpeechRecognition((partialText) => {
+        // Show live transcription as user speaks
+        setLastTranscription(partialText);
+      });
       setRecording(true);
     } catch (err) {
-      console.error('Failed to start recording:', err);
+      console.error('Failed to start speech recognition:', err);
     }
   };
 
   const handlePressOut = async () => {
     if (!isRecording) return;
     try {
-      const filePath = await stopRecording();
+      const transcribedText = await stopSpeechRecognition();
       setRecording(false);
-      if (filePath) {
-        processVoiceInput(filePath);
+      if (transcribedText?.trim()) {
+        processVoiceInput(transcribedText.trim());
       }
     } catch (err) {
-      console.error('Failed to stop recording:', err);
+      console.error('Failed to stop speech recognition:', err);
       setRecording(false);
-      await cancelRecording();
+      await cancelSpeechRecognition();
     }
   };
 

@@ -6,21 +6,14 @@ import {
   prepareAudioChunk,
   clearPreparedAudio,
   stopPlayback,
-  getRecordingUri,
 } from './audio';
 import {API_URL} from './config';
 
-interface AudioChunk {
-  index: number;
-  base64: string;
-}
-
 // Full voice conversation flow:
-// 1. Record audio (push-to-talk) — handled by HomeScreen via audio.ts
-// 2. Send recording to Whisper for transcription
-// 3. Send text to agent via SSE streaming
-// 4. Receive text + audio chunks
-// 5. Play audio chunks in order as they arrive
+// 1. On-device speech recognition (push-to-talk)
+// 2. Send text to agent via SSE streaming
+// 3. Receive tokens (instant display) + audio chunks (ElevenLabs TTS)
+// 4. Play audio chunks sequentially with pre-buffering
 export function useVoiceFlow() {
   const {selectedModel, deductCredits} = useAuthStore();
   const {
@@ -31,24 +24,32 @@ export function useVoiceFlow() {
     setLastResponse,
   } = useVoiceStore();
 
-  const audioQueueRef = useRef<AudioChunk[]>([]);
-  const isPlayingRef = useRef(false);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const cancelledRef = useRef(false);
+  // Queue audio chunks for sequential playback
+  const audioQueueRef = useRef<{base64: string; index: number}[]>([]);
+  const isPlayingAudioRef = useRef(false);
 
-  // Play queued audio chunks sequentially
-  const playNextChunk = useCallback(async () => {
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
+  // Process audio queue — play chunks one by one, pre-buffer next
+  const processAudioQueue = useCallback(async () => {
+    if (isPlayingAudioRef.current || audioQueueRef.current.length === 0) return;
 
-    isPlayingRef.current = true;
+    isPlayingAudioRef.current = true;
     setPlaying(true);
 
     while (audioQueueRef.current.length > 0 && !cancelledRef.current) {
       const chunk = audioQueueRef.current.shift()!;
+
+      // Pre-buffer: write the next chunk to disk while current one plays
+      if (audioQueueRef.current.length > 0) {
+        const nextChunk = audioQueueRef.current[0];
+        prepareAudioChunk(nextChunk.base64, nextChunk.index).catch(() => {});
+      }
+
       await playBase64Audio(chunk.base64, chunk.index);
     }
 
-    isPlayingRef.current = false;
+    isPlayingAudioRef.current = false;
     if (!cancelledRef.current) {
       setPlaying(false);
     }
@@ -72,17 +73,22 @@ export function useVoiceFlow() {
             break;
 
           case 'text':
-            // Sentence-level (used for TTS grouping) — text already shown via tokens
+            // Update display as fallback if no tokens received
+            if (!fullTextRef.value.trim()) {
+              fullTextRef.value += event.data + ' ';
+              setLastResponse(fullTextRef.value.trim());
+            }
             break;
 
           case 'audio':
-            // Pre-write to disk immediately so playback starts faster
-            prepareAudioChunk(event.data, event.index);
-            audioQueueRef.current.push({
-              index: event.index,
-              base64: event.data,
-            });
-            playNextChunk();
+            // Queue audio chunk for playback
+            if (event.data) {
+              audioQueueRef.current.push({
+                base64: event.data,
+                index: event.index,
+              });
+              processAudioQueue();
+            }
             break;
 
           case 'done':
@@ -97,7 +103,7 @@ export function useVoiceFlow() {
         // Skip malformed SSE lines
       }
     },
-    [deductCredits, setLastResponse, playNextChunk],
+    [deductCredits, setLastResponse, processAudioQueue],
   );
 
   // Process SSE stream from /agent/voice using XMLHttpRequest
@@ -116,6 +122,7 @@ export function useVoiceFlow() {
 
         cancelledRef.current = false;
         audioQueueRef.current = [];
+        clearPreparedAudio();
         const fullTextRef = {value: ''};
         let lastIndex = 0;
         let buffer = '';
@@ -172,40 +179,13 @@ export function useVoiceFlow() {
     [selectedModel, handleSSELine],
   );
 
-  // Main voice flow: called when user releases the mic button
+  // Main voice flow: receives transcribed text directly (from on-device recognition)
   const processVoiceInput = useCallback(
-    async (audioFilePath: string) => {
+    async (transcribedText: string) => {
       try {
         setRecording(false);
         setProcessing(true);
-        setLastTranscription(null);
         setLastResponse(null);
-
-        // Step 1: Transcribe audio with Whisper
-        const {
-          data: {session},
-        } = await supabase.auth.getSession();
-
-        const formData = new FormData();
-        formData.append('audio', {
-          uri: getRecordingUri(audioFilePath),
-          type: 'audio/m4a',
-          name: 'recording.m4a',
-        } as any);
-
-        const transcribeRes = await fetch(`${API_URL}/voice/transcribe`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: formData,
-        });
-
-        if (!transcribeRes.ok) {
-          throw new Error('Transcription failed');
-        }
-
-        const {text: transcribedText} = await transcribeRes.json();
         setLastTranscription(transcribedText);
 
         // Add user voice message to chat history
@@ -217,7 +197,7 @@ export function useVoiceFlow() {
           isVoice: true,
         });
 
-        // Step 2: Stream agent response with audio
+        // Stream agent response with ElevenLabs TTS
         setProcessing(false);
         await streamAgentResponse(transcribedText);
 
@@ -253,7 +233,7 @@ export function useVoiceFlow() {
     xhrRef.current?.abort();
     xhrRef.current = null;
     audioQueueRef.current = [];
-    isPlayingRef.current = false;
+    isPlayingAudioRef.current = false;
     clearPreparedAudio();
     await stopPlayback();
     setProcessing(false);

@@ -1,6 +1,44 @@
 import Sound from 'react-native-nitro-sound';
+import Tts from 'react-native-tts';
+import Voice, {SpeechResultsEvent} from '@react-native-voice/voice';
 import RNFS from 'react-native-fs';
 import {Platform} from 'react-native';
+
+// Native TTS setup
+let ttsInitialized = false;
+
+async function initTts() {
+  if (ttsInitialized) return;
+  try {
+    await Tts.setDefaultLanguage('en-US');
+    await Tts.setDefaultRate(0.5);
+    await Tts.setIgnoreSilentSwitch('ignore');
+
+    // Pick a premium/enhanced Siri-quality voice
+    const voices = await Tts.voices();
+    const enVoices = voices.filter(
+      (v: any) => v.language === 'en-US' && !v.notInstalled,
+    );
+    // Prefer premium > enhanced > default. Samantha is the classic Siri voice.
+    const premium = enVoices.find((v: any) =>
+      v.quality && (v.quality === 500 || v.id?.includes('premium')),
+    );
+    const enhanced = enVoices.find((v: any) =>
+      v.quality && (v.quality === 300 || v.id?.includes('enhanced')),
+    );
+    const siri = enVoices.find((v: any) =>
+      v.id?.toLowerCase().includes('samantha'),
+    );
+    const best = premium || enhanced || siri || enVoices[0];
+    if (best) {
+      await Tts.setDefaultVoice(best.id);
+    }
+
+    ttsInitialized = true;
+  } catch {
+    // TTS init failed — will retry next call
+  }
+}
 
 // Audio recording + playback utilities for HeyClaw voice flow
 
@@ -136,4 +174,112 @@ export function getRecordingUri(filePath: string): string {
     return `file://${filePath}`;
   }
   return filePath;
+}
+
+/**
+ * Speak text using native iOS TTS (near-instant, no network)
+ * Returns a promise that resolves when speech finishes
+ */
+export async function speakNative(text: string): Promise<void> {
+  await initTts();
+  return new Promise((resolve) => {
+    let sub1: {remove: () => void} | null = null;
+    let sub2: {remove: () => void} | null = null;
+
+    const onFinish = () => {
+      sub1?.remove();
+      sub2?.remove();
+      resolve();
+    };
+
+    sub1 = Tts.addEventListener('tts-finish', onFinish);
+    sub2 = Tts.addEventListener('tts-cancel', onFinish);
+    Tts.speak(text);
+  });
+}
+
+/**
+ * Stop native TTS playback
+ */
+export async function stopNativeTts(): Promise<void> {
+  try {
+    Tts.stop();
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Set native TTS voice and speed
+ */
+export async function setNativeTtsVoice(rate?: number): Promise<void> {
+  await initTts();
+  if (rate !== undefined) {
+    // react-native-tts uses 0.0–1.0 scale; 0.5 is normal
+    await Tts.setDefaultRate(rate * 0.5);
+  }
+}
+
+// ==========================================
+// On-device Speech Recognition (SFSpeechRecognizer)
+// ==========================================
+
+let recognitionCallback: ((text: string) => void) | null = null;
+let recognitionFinalText = '';
+
+/**
+ * Start real-time on-device speech recognition.
+ * Calls onPartialResult with live transcription as user speaks.
+ * Returns immediately — use stopSpeechRecognition() to get final text.
+ */
+export async function startSpeechRecognition(
+  onPartialResult: (text: string) => void,
+): Promise<void> {
+  recognitionCallback = onPartialResult;
+  recognitionFinalText = '';
+
+  Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+    const text = e.value?.[0] || '';
+    recognitionFinalText = text;
+    recognitionCallback?.(text);
+  };
+
+  Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+    const text = e.value?.[0] || '';
+    recognitionCallback?.(text);
+  };
+
+  await Voice.start('en-US');
+}
+
+/**
+ * Stop speech recognition and return the final transcribed text.
+ */
+export async function stopSpeechRecognition(): Promise<string> {
+  try {
+    await Voice.stop();
+  } catch {
+    // Ignore
+  }
+  Voice.onSpeechResults = undefined as any;
+  Voice.onSpeechPartialResults = undefined as any;
+  const result = recognitionFinalText;
+  recognitionCallback = null;
+  recognitionFinalText = '';
+  return result;
+}
+
+/**
+ * Cancel speech recognition without returning results.
+ */
+export async function cancelSpeechRecognition(): Promise<void> {
+  try {
+    await Voice.cancel();
+  } catch {
+    // Ignore
+  }
+  Voice.onSpeechResults = undefined as any;
+  Voice.onSpeechPartialResults = undefined as any;
+  recognitionCallback = null;
+  recognitionFinalText = '';
 }

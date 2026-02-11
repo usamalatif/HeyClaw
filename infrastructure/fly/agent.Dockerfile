@@ -1,8 +1,11 @@
 # Per-user OpenClaw agent instance
-# Each user gets their own OpenClaw Gateway running on Fly.io
+# Each user gets their own OpenClaw Gateway running on Docker
 FROM node:22-slim
 
 WORKDIR /app
+
+# Install system dependencies required by OpenClaw
+RUN apt-get update && apt-get install -y git python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Install OpenClaw globally
 RUN npm install -g openclaw@latest
@@ -10,10 +13,7 @@ RUN npm install -g openclaw@latest
 # Create workspace directory
 RUN mkdir -p /root/.openclaw/workspace
 
-# Environment variables set per-user at machine creation time
-ENV USER_ID=""
-ENV ANTHROPIC_API_KEY=""
-ENV OPENCLAW_MODEL="anthropic/claude-sonnet-4-5-20250929"
+# Environment variables are passed at runtime via Docker (not baked into image)
 ENV OPENCLAW_PORT="18789"
 
 # Write OpenClaw config at container start

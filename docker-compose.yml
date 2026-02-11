@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: heyclaw-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production
+    volumes:
+      # Mount Docker socket so API can create per-user OpenClaw containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - heyclaw
+    depends_on:
+      - agent-image
+
+  # Build the OpenClaw agent image (used by dockerProvisioner to create per-user containers)
+  agent-image:
+    build:
+      context: infrastructure/fly
+      dockerfile: agent.Dockerfile
+    image: heyclaw-agent:latest
+    entrypoint: ["echo", "Agent image built successfully"]
+    restart: "no"
+
+networks:
+  heyclaw:
+    name: heyclaw
+    driver: bridge

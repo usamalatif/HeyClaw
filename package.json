@@ -1,0 +1,17 @@
+{
+  "name": "heyclaw",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api:dev": "npm run dev --workspace=apps/api",
+    "api:build": "npm run build --workspace=apps/api",
+    "mobile:start": "npm run start --workspace=apps/mobile",
+    "mobile:ios": "npm run ios --workspace=apps/mobile"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

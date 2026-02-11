@@ -13,6 +13,25 @@ import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} 
 
 const MODEL_CREDITS = {standard: 10, power: 30, best: 100} as const;
 
+// Renders text with **bold** markdown support
+function FormattedText({children, style}: {children: string; style: any}) {
+  const parts = children.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <Text style={style}>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return (
+            <Text key={i} style={{fontWeight: '700'}}>
+              {part.slice(2, -2)}
+            </Text>
+          );
+        }
+        return part;
+      })}
+    </Text>
+  );
+}
+
 export default function HomeScreen() {
   const {profile, selectedModel, setSelectedModel} = useAuthStore();
   const {isRecording, isProcessing, isPlaying, lastTranscription, lastResponse} =
@@ -121,7 +140,7 @@ export default function HomeScreen() {
             <Text style={styles.transcription}>You: {lastTranscription}</Text>
           )}
           {lastResponse && (
-            <Text style={styles.responseText}>{lastResponse}</Text>
+            <FormattedText style={styles.responseText}>{lastResponse}</FormattedText>
           )}
         </ScrollView>
       )}

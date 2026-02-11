@@ -2,15 +2,30 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 
+// Strip markdown formatting so TTS doesn't speak asterisks, hashes, etc.
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // **bold**
+    .replace(/\*([^*]+)\*/g, '$1')        // *italic*
+    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1') // _italic_ / __bold__
+    .replace(/^#{1,6}\s+/gm, '')          // # headings
+    .replace(/`([^`]+)`/g, '$1')          // `code`
+    .replace(/```[\s\S]*?```/g, '')       // ```code blocks```
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [links](url)
+    .replace(/~~([^~]+)~~/g, '$1')        // ~~strikethrough~~
+    .trim();
+}
+
 // TTS for a single sentence chunk — returns base64 audio
 export async function chunkToSpeech(
   text: string,
   voice: string = 'alloy',
 ): Promise<string> {
+  const cleanText = stripMarkdown(text);
   const response = await openai.audio.speech.create({
     model: 'tts-1',
     voice: voice as any,
-    input: text,
+    input: cleanText,
     response_format: 'mp3',
   });
 

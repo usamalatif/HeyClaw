@@ -20,12 +20,18 @@ interface OpenClawResponse {
 export async function sendToOpenClaw(
   userId: string,
   messages: OpenClawMessage[],
+  gatewayToken?: string,
 ): Promise<string> {
   const baseUrl = getAgentUrl(userId);
 
+  const headers: Record<string, string> = {'Content-Type': 'application/json'};
+  if (gatewayToken) {
+    headers['Authorization'] = `Bearer ${gatewayToken}`;
+  }
+
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers,
     body: JSON.stringify({
       messages,
       model: 'openclaw',
@@ -45,12 +51,18 @@ export async function sendToOpenClaw(
 export async function* streamFromOpenClaw(
   userId: string,
   messages: OpenClawMessage[],
+  gatewayToken?: string,
 ): AsyncGenerator<string> {
   const baseUrl = getAgentUrl(userId);
 
+  const headers: Record<string, string> = {'Content-Type': 'application/json'};
+  if (gatewayToken) {
+    headers['Authorization'] = `Bearer ${gatewayToken}`;
+  }
+
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers,
     body: JSON.stringify({
       messages,
       model: 'openclaw',

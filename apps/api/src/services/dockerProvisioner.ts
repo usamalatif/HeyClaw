@@ -1,11 +1,17 @@
 // Docker Engine provisioner for per-user OpenClaw instances
 // Replaces Fly.io Machines — runs containers on the same host via Docker socket
 import Docker from 'dockerode';
+import crypto from 'crypto';
 
 const docker = new Docker({socketPath: '/var/run/docker.sock'});
 
 const NETWORK_NAME = 'heyclaw';
 const AGENT_IMAGE = 'heyclaw-agent:latest';
+
+export interface AgentProvisionResult {
+  containerId: string;
+  gatewayToken: string;
+}
 
 // Ensure the Docker network exists
 async function ensureNetwork(): Promise<void> {
@@ -23,7 +29,7 @@ function containerName(userId: string): string {
 }
 
 // Create and start a new OpenClaw container for a user
-export async function createAgentContainer(userId: string): Promise<string> {
+export async function createAgentContainer(userId: string): Promise<AgentProvisionResult> {
   await ensureNetwork();
 
   const name = containerName(userId);
@@ -32,15 +38,21 @@ export async function createAgentContainer(userId: string): Promise<string> {
   try {
     const existing = docker.getContainer(name);
     const info = await existing.inspect();
+    // Extract token from existing container's env
+    const envList = info.Config.Env || [];
+    const tokenEnv = envList.find((e: string) => e.startsWith('OPENCLAW_GATEWAY_TOKEN='));
+    const existingToken = tokenEnv ? tokenEnv.split('=')[1] : '';
     if (info.State.Running) {
-      return info.Id;
+      return {containerId: info.Id, gatewayToken: existingToken};
     }
     // Exists but stopped — start it
     await existing.start();
-    return info.Id;
+    return {containerId: info.Id, gatewayToken: existingToken};
   } catch {
     // Container doesn't exist, create it
   }
+
+  const gatewayToken = crypto.randomBytes(32).toString('hex');
 
   const container = await docker.createContainer({
     name,
@@ -51,6 +63,7 @@ export async function createAgentContainer(userId: string): Promise<string> {
       `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ''}`,
       `OPENCLAW_MODEL=${process.env.OPENCLAW_MODEL || 'anthropic/claude-sonnet-4-5-20250929'}`,
       `OPENCLAW_PORT=18789`,
+      `OPENCLAW_GATEWAY_TOKEN=${gatewayToken}`,
     ],
     ExposedPorts: {'18789/tcp': {}},
     HostConfig: {
@@ -70,7 +83,7 @@ export async function createAgentContainer(userId: string): Promise<string> {
 
   await container.start();
 
-  return container.id;
+  return {containerId: container.id, gatewayToken};
 }
 
 // Start a stopped container

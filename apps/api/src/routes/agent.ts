@@ -34,7 +34,7 @@ agentRoutes.post('/message', async c => {
 
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_personality, agent_machine_id')
+    .select('credits_remaining, agent_personality, agent_machine_id, agent_gateway_token')
     .eq('id', userId)
     .single();
 
@@ -55,6 +55,7 @@ agentRoutes.post('/message', async c => {
     response = await sendToOpenClaw(
       userId,
       [{role: 'user', content: text}],
+      user.agent_gateway_token,
     );
   } catch {
     // OpenClaw unavailable — fallback to direct API
@@ -98,7 +99,7 @@ agentRoutes.post('/voice', async (c) => {
 
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_personality, tts_voice')
+    .select('credits_remaining, agent_personality, tts_voice, agent_gateway_token')
     .eq('id', userId)
     .single();
 
@@ -159,7 +160,7 @@ agentRoutes.post('/voice', async (c) => {
       let textStream: AsyncGenerator<string>;
       try {
         // Test if OpenClaw is reachable first
-        textStream = streamFromOpenClaw(userId, [{role: 'user', content: text}]);
+        textStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
       } catch {
         textStream = streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
       }
@@ -246,12 +247,13 @@ agentRoutes.post('/provision', async c => {
     .eq('id', userId);
 
   try {
-    const containerId = await createAgentContainer(userId);
+    const {containerId, gatewayToken} = await createAgentContainer(userId);
 
     await supabase
       .from('users')
       .update({
         agent_machine_id: containerId,
+        agent_gateway_token: gatewayToken,
         agent_status: 'running',
       })
       .eq('id', userId);

@@ -132,12 +132,21 @@ agentRoutes.post('/voice', async (c) => {
       const processTTSQueue = async () => {
         ttsRunning = true;
         while (ttsQueue.length > 0) {
-          const item = ttsQueue.shift()!;
-          const audioBase64 = await chunkToSpeech(item.sentence, ttsVoice);
-          await stream.writeSSE({
-            data: JSON.stringify({type: 'audio', data: audioBase64, index: item.index}),
-            event: 'chunk',
-          });
+          // Process up to 2 TTS requests in parallel for speed
+          const batch = ttsQueue.splice(0, Math.min(2, ttsQueue.length));
+          const results = await Promise.all(
+            batch.map(item =>
+              chunkToSpeech(item.sentence, ttsVoice)
+                .then(audio => ({audio, index: item.index}))
+            ),
+          );
+          // Send in original order
+          for (const result of results) {
+            await stream.writeSSE({
+              data: JSON.stringify({type: 'audio', data: result.audio, index: result.index}),
+              event: 'chunk',
+            });
+          }
         }
         ttsRunning = false;
         ttsFinishResolve?.();
@@ -202,7 +211,8 @@ agentRoutes.post('/voice', async (c) => {
           fullText += chunk;
           await sendToken(chunk);
 
-          if (/[.!?]\s/.test(buffer)) {
+          // Flush on sentence endings, or on clause boundaries when buffer is long
+          if (/[.!?]\s/.test(buffer) || (buffer.length > 50 && /[,;:]\s/.test(buffer))) {
             await flushSentences(false);
           }
         }

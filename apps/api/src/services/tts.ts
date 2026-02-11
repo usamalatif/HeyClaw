@@ -18,22 +18,58 @@ export async function chunkToSpeech(
   return Buffer.from(arrayBuffer).toString('base64');
 }
 
-// Split text into speakable sentences
+// Split text into speakable chunks (sentences + long clauses)
+// Splits on .!? and also on ,;:— when the preceding clause is > 40 chars
 export function splitIntoSentences(text: string): string[] {
-  // Split on sentence endings, keeping the delimiter
+  const chunks: string[] = [];
+  // Split on sentence endings first
   const raw = text.match(/[^.!?]+[.!?]+\s*/g);
-  if (!raw) return text.trim() ? [text.trim()] : [];
 
-  // Merge very short fragments with the previous sentence
-  const merged: string[] = [];
+  if (!raw) {
+    // No sentence endings — try splitting long text on clause boundaries
+    if (text.length > 50) {
+      const clauses = text.split(/(?<=[,;:—])\s+/);
+      let current = '';
+      for (const clause of clauses) {
+        current += (current ? ' ' : '') + clause;
+        if (current.length > 40) {
+          chunks.push(current.trim());
+          current = '';
+        }
+      }
+      if (current.trim()) chunks.push(current.trim());
+      if (chunks.length > 1) return chunks;
+    }
+    return text.trim() ? [text.trim()] : [];
+  }
+
+  // For each sentence, split long ones on clause boundaries
   for (const sentence of raw) {
     const trimmed = sentence.trim();
-    if (merged.length > 0 && trimmed.length < 20) {
-      merged[merged.length - 1] += ' ' + trimmed;
+    if (trimmed.length > 80) {
+      // Split long sentence on clause boundaries
+      const parts = trimmed.split(/(?<=[,;:—])\s+/);
+      let current = '';
+      for (const part of parts) {
+        current += (current ? ' ' : '') + part;
+        if (current.length > 40) {
+          chunks.push(current.trim());
+          current = '';
+        }
+      }
+      if (current.trim()) {
+        if (chunks.length > 0 && current.trim().length < 20) {
+          chunks[chunks.length - 1] += ' ' + current.trim();
+        } else {
+          chunks.push(current.trim());
+        }
+      }
+    } else if (chunks.length > 0 && trimmed.length < 20) {
+      chunks[chunks.length - 1] += ' ' + trimmed;
     } else {
-      merged.push(trimmed);
+      chunks.push(trimmed);
     }
   }
 
-  return merged;
+  return chunks;
 }

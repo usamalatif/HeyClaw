@@ -16,6 +16,19 @@ cat > /root/.openclaw/openclaw.json << EOF
         "primary": "${OPENCLAW_MODEL:-anthropic/claude-sonnet-4-5-20250929}"
       }
     }
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
   }
 }
 EOF

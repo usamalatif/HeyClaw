@@ -5,11 +5,9 @@ import {supabase} from '../lib/supabase.js';
 import type {AppEnv} from '../lib/types.js';
 import type {ModelTier} from '@heyclaw/shared';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
-import {createAgentContainer, startAgentContainer, getAgentStatus as getDockerAgentStatus} from '../services/dockerProvisioner.js';
+import {createAgentContainer, startAgentContainer} from '../services/dockerProvisioner.js';
 import {chatCompletion, streamChatCompletion} from '../services/chat.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
-
-const IS_DEV = !process.env.DOCKER_PROVISIONING || process.env.DOCKER_PROVISIONING !== 'true';
 
 const CREDIT_COSTS: Record<ModelTier, number> = {
   standard: 10,
@@ -34,7 +32,6 @@ agentRoutes.post('/message', async c => {
     return c.json({message: 'Invalid model tier'}, 400);
   }
 
-  // Check user credits and agent info
   const {data: user, error: userError} = await supabase
     .from('users')
     .select('credits_remaining, agent_personality, agent_machine_id')
@@ -52,16 +49,15 @@ agentRoutes.post('/message', async c => {
     );
   }
 
-  // Route to OpenClaw instance if available, otherwise fallback to direct OpenAI
+  // Route to OpenClaw instance, fallback to direct API
   let response: string;
-  const hasRealMachine = user.agent_machine_id && !user.agent_machine_id.startsWith('dev-');
-
-  if (hasRealMachine) {
+  try {
     response = await sendToOpenClaw(
       userId,
       [{role: 'user', content: text}],
     );
-  } else {
+  } catch {
+    // OpenClaw unavailable — fallback to direct API
     response = await chatCompletion(
       [{role: 'user', content: text}],
       modelTier as ModelTier,
@@ -76,7 +72,6 @@ agentRoutes.post('/message', async c => {
     .update({credits_remaining: newCredits})
     .eq('id', userId);
 
-  // Log usage
   await supabase.from('usage_logs').insert({
     user_id: userId,
     type: 'agent_message',
@@ -88,13 +83,6 @@ agentRoutes.post('/message', async c => {
 });
 
 // Streaming voice endpoint — SSE with text + audio chunks
-// Flow: agent streams text -> sentences split -> each sentence TTS'd -> audio base64 sent
-//
-// SSE events:
-//   { type: "text",  data: "sentence", index: 0 }       — display text
-//   { type: "audio", data: "base64mp3...", index: 0 }    — play audio chunk
-//   { type: "done",  creditsUsed, creditsRemaining, fullText }
-//   { type: "error", message: "..." }
 agentRoutes.post('/voice', async (c) => {
   const userId = c.get('userId');
   const {text, modelTier = 'standard', voice} = await c.req.json();
@@ -110,7 +98,7 @@ agentRoutes.post('/voice', async (c) => {
 
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_personality, tts_voice, agent_machine_id')
+    .select('credits_remaining, agent_personality, tts_voice')
     .eq('id', userId)
     .single();
 
@@ -131,7 +119,6 @@ agentRoutes.post('/voice', async (c) => {
 
   return streamSSE(c, async (stream) => {
     try {
-      // Stream OpenAI response, accumulate into sentences, TTS each sentence
       let buffer = '';
       let sentenceIndex = 0;
       let fullText = '';
@@ -141,9 +128,7 @@ agentRoutes.post('/voice', async (c) => {
           ? (buffer.trim() ? [buffer.trim()] : [])
           : splitIntoSentences(buffer);
 
-        // Keep the last partial sentence in the buffer (unless forcing)
         if (!force && sentences.length > 0) {
-          // Check if buffer ends with sentence-ending punctuation
           const endsWithPunctuation = /[.!?]\s*$/.test(buffer);
           if (!endsWithPunctuation) {
             buffer = sentences.pop() || '';
@@ -155,13 +140,11 @@ agentRoutes.post('/voice', async (c) => {
         }
 
         for (const sentence of sentences) {
-          // Send text chunk immediately
           await stream.writeSSE({
             data: JSON.stringify({type: 'text', data: sentence, index: sentenceIndex}),
             event: 'chunk',
           });
 
-          // Convert to speech and send audio
           const audioBase64 = await chunkToSpeech(sentence, ttsVoice);
           await stream.writeSSE({
             data: JSON.stringify({type: 'audio', data: audioBase64, index: sentenceIndex}),
@@ -172,26 +155,26 @@ agentRoutes.post('/voice', async (c) => {
         }
       };
 
-      // Stream from OpenClaw instance or fallback to direct OpenAI
-      const hasRealMachine = user.agent_machine_id && !user.agent_machine_id.startsWith('dev-');
-      const textStream = hasRealMachine
-        ? streamFromOpenClaw(userId, [{role: 'user', content: text}])
-        : streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
+      // Try OpenClaw streaming, fallback to direct API
+      let textStream: AsyncGenerator<string>;
+      try {
+        // Test if OpenClaw is reachable first
+        textStream = streamFromOpenClaw(userId, [{role: 'user', content: text}]);
+      } catch {
+        textStream = streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
+      }
 
       for await (const chunk of textStream) {
         buffer += chunk;
         fullText += chunk;
 
-        // Try to flush complete sentences as they accumulate
         if (/[.!?]\s/.test(buffer)) {
           await flushSentences(false);
         }
       }
 
-      // Flush any remaining text
       await flushSentences(true);
 
-      // Deduct credits
       const newCredits = user.credits_remaining - creditCost;
       await supabase
         .from('users')
@@ -224,7 +207,6 @@ agentRoutes.post('/voice', async (c) => {
 });
 
 // Provision a new OpenClaw agent instance for the user
-// Called automatically when user first signs up / enters provisioning screen
 agentRoutes.post('/provision', async c => {
   const userId = c.get('userId');
 
@@ -239,19 +221,22 @@ agentRoutes.post('/provision', async c => {
   }
 
   // Already provisioned
-  if (user.agent_machine_id && user.agent_status !== 'error') {
-    // If sleeping/stopped, wake it up
-    if (user.agent_status === 'sleeping' && !IS_DEV) {
+  if (user.agent_machine_id && user.agent_status === 'running') {
+    return c.json({agentStatus: 'running', machineId: user.agent_machine_id});
+  }
+
+  // If sleeping, wake it
+  if (user.agent_machine_id && user.agent_status === 'sleeping') {
+    try {
       await startAgentContainer(user.agent_machine_id);
       await supabase
         .from('users')
         .update({agent_status: 'running'})
         .eq('id', userId);
+      return c.json({agentStatus: 'running', machineId: user.agent_machine_id});
+    } catch {
+      // Container gone — re-provision below
     }
-    return c.json({
-      agentStatus: user.agent_status === 'sleeping' ? 'running' : user.agent_status,
-      machineId: user.agent_machine_id,
-    });
   }
 
   // Set status to provisioning
@@ -260,24 +245,6 @@ agentRoutes.post('/provision', async c => {
     .update({agent_status: 'provisioning'})
     .eq('id', userId);
 
-  if (IS_DEV) {
-    // Dev mode: simulate provisioning with a short delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    await supabase
-      .from('users')
-      .update({
-        agent_status: 'running',
-        agent_machine_id: `dev-machine-${userId.slice(0, 8)}`,
-      })
-      .eq('id', userId);
-
-    return c.json({
-      agentStatus: 'running',
-      machineId: `dev-machine-${userId.slice(0, 8)}`,
-    });
-  }
-
-  // Production: Create Docker container with OpenClaw
   try {
     const containerId = await createAgentContainer(userId);
 
@@ -334,8 +301,10 @@ agentRoutes.post('/wake', async c => {
     return c.json({message: 'Agent already running'});
   }
 
-  if (!IS_DEV) {
+  try {
     await startAgentContainer(user.agent_machine_id);
+  } catch {
+    // Container might not exist anymore
   }
 
   await supabase

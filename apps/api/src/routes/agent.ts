@@ -49,16 +49,23 @@ agentRoutes.post('/message', async c => {
     );
   }
 
-  // Route to OpenClaw instance, fallback to direct API
+  // Only route "best" tier through OpenClaw (Sonnet) — standard/power use cheap OpenAI models
   let response: string;
-  try {
-    response = await sendToOpenClaw(
-      userId,
-      [{role: 'user', content: text}],
-      user.agent_gateway_token,
-    );
-  } catch {
-    // OpenClaw unavailable — fallback to direct API
+  if (modelTier === 'best') {
+    try {
+      response = await sendToOpenClaw(
+        userId,
+        [{role: 'user', content: text}],
+        user.agent_gateway_token,
+      );
+    } catch {
+      response = await chatCompletion(
+        [{role: 'user', content: text}],
+        modelTier as ModelTier,
+        user.agent_personality,
+      );
+    }
+  } else {
     response = await chatCompletion(
       [{role: 'user', content: text}],
       modelTier as ModelTier,
@@ -200,30 +207,29 @@ agentRoutes.post('/voice', async (c) => {
         });
       };
 
-      // Try OpenClaw streaming, fallback to direct API
-      // Note: async generators are lazy — errors only surface during iteration
-      let usedOpenClaw = false;
-      try {
-        const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
-        for await (const chunk of openclawStream) {
-          usedOpenClaw = true;
+      // Only route "best" tier through OpenClaw (Sonnet)
+      // Standard/power use cheap OpenAI models directly
+      const streamChunks = async (gen: AsyncGenerator<string>) => {
+        for await (const chunk of gen) {
           buffer += chunk;
           fullText += chunk;
           await sendToken(chunk);
 
-          // Eager first flush: send first ~25 chars to TTS immediately
-          // so audio starts generating while LLM is still streaming
           if (sentenceIndex === 0 && buffer.length > 25) {
             await flushSentences(true);
           } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
             await flushSentences(false);
           }
         }
-      } catch {
-        // OpenClaw failed — fallback to direct API (only if we haven't received any data)
-        if (!usedOpenClaw) {
-          const fallbackStream = streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
-          for await (const chunk of fallbackStream) {
+      };
+
+      if (modelTier === 'best') {
+        let usedOpenClaw = false;
+        try {
+          const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
+          // Peek first chunk to detect if OpenClaw is alive
+          for await (const chunk of openclawStream) {
+            usedOpenClaw = true;
             buffer += chunk;
             fullText += chunk;
             await sendToken(chunk);
@@ -234,7 +240,13 @@ agentRoutes.post('/voice', async (c) => {
               await flushSentences(false);
             }
           }
+        } catch {
+          if (!usedOpenClaw) {
+            await streamChunks(streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality));
+          }
         }
+      } else {
+        await streamChunks(streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality));
       }
 
       await flushSentences(true);

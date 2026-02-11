@@ -157,20 +157,31 @@ agentRoutes.post('/voice', async (c) => {
       };
 
       // Try OpenClaw streaming, fallback to direct API
-      let textStream: AsyncGenerator<string>;
+      // Note: async generators are lazy — errors only surface during iteration
+      let usedOpenClaw = false;
       try {
-        // Test if OpenClaw is reachable first
-        textStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
+        const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
+        for await (const chunk of openclawStream) {
+          usedOpenClaw = true;
+          buffer += chunk;
+          fullText += chunk;
+
+          if (/[.!?]\s/.test(buffer)) {
+            await flushSentences(false);
+          }
+        }
       } catch {
-        textStream = streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
-      }
+        // OpenClaw failed — fallback to direct API (only if we haven't received any data)
+        if (!usedOpenClaw) {
+          const fallbackStream = streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality);
+          for await (const chunk of fallbackStream) {
+            buffer += chunk;
+            fullText += chunk;
 
-      for await (const chunk of textStream) {
-        buffer += chunk;
-        fullText += chunk;
-
-        if (/[.!?]\s/.test(buffer)) {
-          await flushSentences(false);
+            if (/[.!?]\s/.test(buffer)) {
+              await flushSentences(false);
+            }
+          }
         }
       }
 

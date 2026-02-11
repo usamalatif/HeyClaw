@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
   View,
   Text,
@@ -25,10 +25,43 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const sessionIdRef = useRef<string | null>(null);
   const {selectedModel, deductCredits, profile} = useAuthStore();
 
   const creditsPerMsg = MODEL_CREDITS[selectedModel];
   const hasCredits = (profile?.creditsRemaining ?? 0) >= creditsPerMsg;
+
+  // Load or create chat session on mount
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const sessions = await api.getSessions();
+        if (sessions.length > 0) {
+          const session = await api.getSession(sessions[0].id);
+          sessionIdRef.current = session.id;
+          if (session.messages?.length > 0) {
+            setMessages(session.messages);
+          }
+        } else {
+          const session = await api.createSession();
+          sessionIdRef.current = session.id;
+        }
+      } catch {
+        // Offline or error — continue without persistence
+      }
+    };
+    loadSession();
+  }, []);
+
+  const saveMessages = useCallback(async (msgs: Message[]) => {
+    if (!sessionIdRef.current || msgs.length === 0) return;
+    try {
+      const title = msgs[0]?.content.slice(0, 50) || 'New Chat';
+      await api.updateSession(sessionIdRef.current, {messages: msgs, title});
+    } catch {
+      // Save failed silently
+    }
+  }, []);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -39,7 +72,8 @@ export default function ChatScreen() {
       role: 'user',
       content: text,
     };
-    setMessages(prev => [...prev, userMsg]);
+    const withUser = [...messages, userMsg];
+    setMessages(withUser);
     setInput('');
     setLoading(true);
 
@@ -52,7 +86,9 @@ export default function ChatScreen() {
         role: 'assistant',
         content: res.response,
       };
-      setMessages(prev => [...prev, assistantMsg]);
+      const withAssistant = [...withUser, assistantMsg];
+      setMessages(withAssistant);
+      saveMessages(withAssistant);
     } catch (err: any) {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),

@@ -57,6 +57,30 @@ chatRoutes.post('/sessions', async c => {
   return c.json(data);
 });
 
+chatRoutes.put('/sessions/:id', async c => {
+  const userId = c.get('userId');
+  const sessionId = c.req.param('id');
+  const {messages, title} = await c.req.json();
+
+  const update: Record<string, any> = {updated_at: new Date().toISOString()};
+  if (messages !== undefined) update.messages = messages;
+  if (title !== undefined) update.title = title;
+
+  const {data, error} = await supabase
+    .from('chat_sessions')
+    .update(update)
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error || !data) {
+    return c.json({message: 'Session not found'}, 404);
+  }
+
+  return c.json(data);
+});
+
 chatRoutes.delete('/sessions/:id', async c => {
   const userId = c.get('userId');
   const sessionId = c.req.param('id');

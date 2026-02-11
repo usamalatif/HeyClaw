@@ -10,6 +10,7 @@ function App() {
   const setSession = useAuthStore(s => s.setSession);
   const setProfile = useAuthStore(s => s.setProfile);
   const setProvisioned = useAuthStore(s => s.setProvisioned);
+  const setProfileLoading = useAuthStore(s => s.setProfileLoading);
   const session = useAuthStore(s => s.session);
 
   useEffect(() => {
@@ -33,9 +34,11 @@ function App() {
     if (!session) {
       setProfile(null);
       setProvisioned(false);
+      setProfileLoading(false);
       return;
     }
 
+    setProfileLoading(true);
     const loadProfile = async () => {
       try {
         const user = await api.getMe();
@@ -61,11 +64,13 @@ function App() {
         }
       } catch (err) {
         console.error('Failed to load profile:', err);
+      } finally {
+        setProfileLoading(false);
       }
     };
 
     loadProfile();
-  }, [session, setProfile, setProvisioned]);
+  }, [session, setProfile, setProvisioned, setProfileLoading]);
 
   return (
     <SafeAreaProvider>

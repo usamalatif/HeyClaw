@@ -71,6 +71,11 @@ export const api = {
   getSession: (id: string) => request<any>(`/chat/sessions/${id}`),
   createSession: () =>
     request<any>('/chat/sessions', {method: 'POST'}),
+  updateSession: (id: string, data: {messages?: any[]; title?: string}) =>
+    request<any>(`/chat/sessions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
   deleteSession: (id: string) =>
     request<any>(`/chat/sessions/${id}`, {method: 'DELETE'}),
 };

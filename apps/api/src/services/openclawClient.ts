@@ -35,6 +35,7 @@ export async function sendToOpenClaw(
     body: JSON.stringify({
       messages,
       model: 'openclaw',
+      user: userId, // Stable session — OpenClaw remembers conversation history
     }),
   });
 
@@ -67,6 +68,7 @@ export async function* streamFromOpenClaw(
       messages,
       model: 'openclaw',
       stream: true,
+      user: userId, // Stable session — OpenClaw remembers conversation history
     }),
   });
 

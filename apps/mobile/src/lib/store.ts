@@ -19,10 +19,12 @@ interface UserProfile {
 interface AuthState {
   session: Session | null;
   isProvisioned: boolean;
+  profileLoading: boolean;
   profile: UserProfile | null;
   selectedModel: ModelTier;
   setSession: (session: Session | null) => void;
   setProvisioned: (provisioned: boolean) => void;
+  setProfileLoading: (loading: boolean) => void;
   setProfile: (profile: UserProfile | null) => void;
   setSelectedModel: (model: ModelTier) => void;
   deductCredits: (amount: number) => void;
@@ -31,11 +33,13 @@ interface AuthState {
 export const useAuthStore = create<AuthState>(set => ({
   session: null,
   isProvisioned: false,
+  profileLoading: true,
   profile: null,
   selectedModel: 'standard',
 
   setSession: session => set({session}),
   setProvisioned: isProvisioned => set({isProvisioned}),
+  setProfileLoading: profileLoading => set({profileLoading}),
   setProfile: profile => set({profile}),
   setSelectedModel: selectedModel => set({selectedModel}),
   deductCredits: amount =>

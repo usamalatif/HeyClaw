@@ -1,12 +1,19 @@
 #!/bin/bash
 set -e
 
-# Generate OpenClaw config from environment variables
+# Increase Node.js heap for OpenClaw
+export NODE_OPTIONS="--max-old-space-size=1024"
+
+# Generate OpenClaw config from environment variables (new schema)
 cat > /root/.openclaw/openclaw.json << EOF
 {
-  "agent": {
-    "model": "${OPENCLAW_MODEL:-anthropic/claude-sonnet-4-5-20250929}",
-    "name": "HeyClaw Assistant"
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "${OPENCLAW_MODEL:-anthropic/claude-sonnet-4-5-20250929}"
+      },
+      "name": "HeyClaw Assistant"
+    }
   },
   "gateway": {
     "port": ${OPENCLAW_PORT:-18789},

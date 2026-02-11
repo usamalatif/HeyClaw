@@ -56,16 +56,19 @@ export async function createAgentContainer(userId: string): Promise<string> {
     HostConfig: {
       NetworkMode: NETWORK_NAME,
       RestartPolicy: {Name: 'unless-stopped'},
-      Memory: 512 * 1024 * 1024, // 512MB
+      Memory: 1536 * 1024 * 1024, // 1.5GB
       NanoCpus: 500000000, // 0.5 CPU
+    },
+    NetworkingConfig: {
+      EndpointsConfig: {
+        [NETWORK_NAME]: {
+          Aliases: [name],
+        },
+      },
     },
   });
 
   await container.start();
-
-  // Connect to the heyclaw network with an alias
-  const network = docker.getNetwork(NETWORK_NAME);
-  await network.connect({Container: container.id, EndpointConfig: {Aliases: [name]}});
 
   return container.id;
 }

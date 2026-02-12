@@ -60,7 +60,6 @@ async function ensureAgentRunning(userId: string): Promise<string> {
   }
   throw new Error('Agent container failed to start within 60 seconds');
 }
-}
 
 export const agentRoutes = new Hono<AppEnv>();
 

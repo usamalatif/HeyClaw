@@ -9,6 +9,21 @@ import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js'
 
 const CREDIT_COST = 10;
 
+// Poll until OpenClaw is actually responding inside the container
+async function waitForAgent(userId: string, maxAttempts = 30): Promise<void> {
+  const agentUrl = getAgentUrl(userId);
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(2000)});
+      if (res.ok) return;
+    } catch {
+      // Not ready yet
+    }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  throw new Error('Agent container failed to respond within 60 seconds');
+}
+
 // Ensure the user's OpenClaw container is provisioned and running.
 // Returns the gateway token needed for API calls.
 async function ensureAgentRunning(userId: string): Promise<string> {
@@ -18,47 +33,41 @@ async function ensureAgentRunning(userId: string): Promise<string> {
     .eq('id', userId)
     .single();
 
+  let gatewayToken: string | undefined;
+
   // Already provisioned — check if container is actually running
   if (user?.agent_machine_id && user?.agent_gateway_token) {
     const status = await getAgentStatus(user.agent_machine_id);
     if (status === 'running') {
-      return user.agent_gateway_token;
-    }
-    // Container exists but stopped — try to start it
-    if (status === 'stopped') {
+      gatewayToken = user.agent_gateway_token;
+    } else if (status === 'stopped') {
       try {
         await startAgentContainer(user.agent_machine_id);
         await supabase.from('users').update({agent_status: 'running'}).eq('id', userId);
-        return user.agent_gateway_token;
+        gatewayToken = user.agent_gateway_token;
       } catch {
         // Container gone — fall through to re-provision
       }
     }
   }
 
-  // Provision a new container
-  const {containerId, gatewayToken} = await createAgentContainer(userId);
-  await supabase
-    .from('users')
-    .update({
-      agent_machine_id: containerId,
-      agent_gateway_token: gatewayToken,
-      agent_status: 'running',
-    })
-    .eq('id', userId);
-
-  // Wait for OpenClaw to be ready (poll health check)
-  const agentUrl = getAgentUrl(userId);
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 2000));
-    try {
-      const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(2000)});
-      if (res.ok) return gatewayToken;
-    } catch {
-      // Not ready yet
-    }
+  // Provision a new container if needed
+  if (!gatewayToken) {
+    const result = await createAgentContainer(userId);
+    gatewayToken = result.gatewayToken;
+    await supabase
+      .from('users')
+      .update({
+        agent_machine_id: result.containerId,
+        agent_gateway_token: gatewayToken,
+        agent_status: 'running',
+      })
+      .eq('id', userId);
   }
-  throw new Error('Agent container failed to start within 60 seconds');
+
+  // Always verify OpenClaw is actually responding before returning
+  await waitForAgent(userId);
+  return gatewayToken;
 }
 
 export const agentRoutes = new Hono<AppEnv>();

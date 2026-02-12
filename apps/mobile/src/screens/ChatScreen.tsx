@@ -9,8 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Easing,
   ActivityIndicator,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {useAuthStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
 
@@ -39,63 +41,125 @@ function FormattedText({
   );
 }
 
-function TypingIndicator() {
-  const dot1 = useRef(new Animated.Value(0)).current;
-  const dot2 = useRef(new Animated.Value(0)).current;
-  const dot3 = useRef(new Animated.Value(0)).current;
+function ThinkingIndicator() {
+  const dots = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const bubblePulse = useRef(new Animated.Value(0)).current;
+  const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const animate = (dot: Animated.Value, delay: number) =>
+    // Wave animation on dots — staggered smooth sine-like bounce
+    const dotAnims = dots.map((dot, i) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(delay),
+          Animated.delay(i * 180),
           Animated.timing(dot, {
             toValue: 1,
-            duration: 300,
+            duration: 400,
+            easing: Easing.out(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(dot, {
             toValue: 0,
-            duration: 300,
+            duration: 400,
+            easing: Easing.in(Easing.ease),
             useNativeDriver: true,
           }),
+          Animated.delay((2 - i) * 180),
         ]),
-      );
+      ),
+    );
+    dotAnims.forEach(a => a.start());
 
-    const a1 = animate(dot1, 0);
-    const a2 = animate(dot2, 150);
-    const a3 = animate(dot3, 300);
-    a1.start();
-    a2.start();
-    a3.start();
+    // Subtle pulse on the bubble background
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bubblePulse, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bubblePulse, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulse.start();
+
+    // Shimmer sweep across the bubble
+    const shimmerAnim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmer, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+        Animated.delay(500),
+      ]),
+    );
+    shimmerAnim.start();
 
     return () => {
-      a1.stop();
-      a2.stop();
-      a3.stop();
+      dotAnims.forEach(a => a.stop());
+      pulse.stop();
+      shimmerAnim.stop();
     };
-  }, [dot1, dot2, dot3]);
+  }, [dots, bubblePulse, shimmer]);
 
   const dotStyle = (dot: Animated.Value) => ({
-    opacity: dot.interpolate({inputRange: [0, 1], outputRange: [0.3, 1]}),
+    opacity: dot.interpolate({inputRange: [0, 1], outputRange: [0.35, 1]}),
     transform: [
-      {
-        translateY: dot.interpolate({
-          inputRange: [0, 1],
-          outputRange: [0, -4],
-        }),
-      },
+      {scaleX: dot.interpolate({inputRange: [0, 1], outputRange: [1, 1.3]})},
+      {scaleY: dot.interpolate({inputRange: [0, 1], outputRange: [1, 1.3]})},
+      {translateY: dot.interpolate({inputRange: [0, 1], outputRange: [0, -8]})},
     ],
   });
 
   return (
-    <View style={[styles.bubble, styles.assistantBubble, styles.typingBubble]}>
-      <Text style={styles.bubbleAvatar}>🦞</Text>
-      <View style={styles.dotsRow}>
-        <Animated.View style={[styles.dot, dotStyle(dot1)]} />
-        <Animated.View style={[styles.dot, dotStyle(dot2)]} />
-        <Animated.View style={[styles.dot, dotStyle(dot3)]} />
-      </View>
+    <View style={styles.thinkingContainer}>
+      {/* Shimmer overlay bar */}
+      <Animated.View
+        style={[
+          styles.thinkingShimmer,
+          {
+            opacity: shimmer.interpolate({inputRange: [0, 0.5, 1], outputRange: [0, 0.12, 0]}),
+            transform: [
+              {translateX: shimmer.interpolate({inputRange: [0, 1], outputRange: [-100, 250]})},
+            ],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.thinkingBubble,
+          {
+            opacity: bubblePulse.interpolate({inputRange: [0, 1], outputRange: [1, 0.85]}),
+            transform: [{scale: bubblePulse.interpolate({inputRange: [0, 1], outputRange: [1, 1.02]})}],
+          },
+        ]}>
+        <Text style={styles.thinkingAvatar}>🦞</Text>
+        <View style={styles.thinkingContent}>
+          <View style={styles.thinkingDotsRow}>
+            {dots.map((dot, i) => (
+              <Animated.View key={i} style={[styles.thinkingDot, dotStyle(dot)]} />
+            ))}
+          </View>
+          <Text style={styles.thinkingLabel}>Thinking</Text>
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -129,14 +193,35 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({animated: true});
-      }, 50);
+  // Reliable scroll: track content height vs container height
+  const contentHeightRef = useRef(0);
+  const containerHeightRef = useRef(0);
+  const shouldScrollRef = useRef(true);
+
+  const scrollToBottom = useCallback((animated = false) => {
+    const offset = contentHeightRef.current - containerHeightRef.current;
+    if (offset > 0) {
+      flatListRef.current?.scrollToOffset({offset, animated});
     }
-  }, [messages]);
+  }, []);
+
+  // Auto-scroll when messages change or waiting indicator appears
+  useEffect(() => {
+    if (messages.length > 0 || isWaiting) {
+      shouldScrollRef.current = true;
+      // Delay to let layout settle after state change
+      setTimeout(() => scrollToBottom(), 80);
+    }
+  }, [messages, isWaiting, scrollToBottom]);
+
+  // Scroll to bottom when tab gains focus (e.g. switching from voice tab)
+  useFocusEffect(
+    useCallback(() => {
+      if (messages.length > 0) {
+        setTimeout(() => scrollToBottom(), 100);
+      }
+    }, [messages.length, scrollToBottom]),
+  );
 
   const hasCredits = (profile?.creditsRemaining ?? 0) >= CREDIT_COST;
 
@@ -233,6 +318,7 @@ export default function ChatScreen() {
           saveMessages(finalMsgs);
           setIsTyping(false);
           setLoading(false);
+          setTimeout(() => scrollToBottom(), 50);
         } else {
           updateLastMessage(fullText.slice(0, charIndex));
         }
@@ -267,10 +353,31 @@ export default function ChatScreen() {
       ) : (
       <FlatList
         ref={flatListRef}
+        style={{flex: 1}}
         data={messages}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.messageList}
-        ListFooterComponent={isWaiting ? <TypingIndicator /> : null}
+        onContentSizeChange={(_w, h) => {
+          contentHeightRef.current = h;
+          if (shouldScrollRef.current) {
+            scrollToBottom();
+          }
+        }}
+        onLayout={(e) => {
+          containerHeightRef.current = e.nativeEvent.layout.height;
+        }}
+        onScrollBeginDrag={() => {
+          shouldScrollRef.current = false;
+        }}
+        onMomentumScrollEnd={(e) => {
+          // Re-enable auto-scroll if user scrolled near the bottom
+          const {contentOffset, contentSize, layoutMeasurement} = e.nativeEvent;
+          const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+          if (distanceFromBottom < 50) {
+            shouldScrollRef.current = true;
+          }
+        }}
+        ListFooterComponent={isWaiting ? <ThinkingIndicator /> : null}
         renderItem={({item}) => (
           <View
             style={[
@@ -355,7 +462,7 @@ const styles = StyleSheet.create({
   },
   messageList: {
     padding: 16,
-    paddingBottom: 8,
+    paddingBottom: 80,
   },
   bubble: {
     maxWidth: '80%',
@@ -431,19 +538,58 @@ const styles = StyleSheet.create({
     color: '#ff6b35',
     fontWeight: '300',
   },
-  typingBubble: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  thinkingContainer: {
+    alignSelf: 'flex-start',
+    maxWidth: '60%',
+    marginBottom: 8,
+    overflow: 'hidden',
+    borderRadius: 18,
   },
-  dotsRow: {
+  thinkingShimmer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 80,
+    height: '100%',
+    backgroundColor: '#ff6b35',
+    borderRadius: 18,
+    zIndex: 1,
+  },
+  thinkingBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#666',
+  thinkingAvatar: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  thinkingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  thinkingDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  thinkingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ff6b35',
+  },
+  thinkingLabel: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '500',
+    marginLeft: 2,
   },
 });

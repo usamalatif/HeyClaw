@@ -26,6 +26,14 @@ cat > /root/.openclaw/openclaw.json << EOF
       }
     }
   },
+  "cron": {
+    "enabled": true,
+    "maxConcurrentRuns": 2
+  },
+  "hooks": {
+    "enabled": true,
+    "token": "${OPENCLAW_GATEWAY_TOKEN}"
+  },
   "agents": {
     "defaults": {
       "model": {

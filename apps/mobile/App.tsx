@@ -5,6 +5,7 @@ import {supabase} from './src/lib/supabase';
 import {useAuthStore} from './src/lib/store';
 import {api} from './src/lib/api';
 import {requestNotificationPermission, startAppStateTracking} from './src/lib/notifications';
+import {useAutomationPoller} from './src/lib/useAutomationPoller';
 import RootNavigator from './src/navigation/RootNavigator';
 
 function App() {
@@ -36,6 +37,9 @@ function App() {
     const cleanup = startAppStateTracking();
     return cleanup;
   }, []);
+
+  // Poll for automation/cron results
+  useAutomationPoller();
 
   // Load user profile when session changes
   useEffect(() => {

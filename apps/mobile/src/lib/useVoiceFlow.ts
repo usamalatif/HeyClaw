@@ -57,6 +57,8 @@ export function useVoiceFlow() {
   }, [setPlaying]);
 
   // Parse SSE lines and handle events
+  const receivedFirstChunkRef = useRef(false);
+
   const handleSSELine = useCallback(
     (line: string, fullTextRef: {value: string}) => {
       if (!line.startsWith('data:')) return;
@@ -65,6 +67,12 @@ export function useVoiceFlow() {
 
       try {
         const event = JSON.parse(jsonStr);
+
+        // Turn off "processing" animation once first real data arrives
+        if (!receivedFirstChunkRef.current && (event.type === 'token' || event.type === 'text' || event.type === 'audio')) {
+          receivedFirstChunkRef.current = true;
+          setProcessing(false);
+        }
 
         switch (event.type) {
           case 'token':
@@ -94,6 +102,7 @@ export function useVoiceFlow() {
 
           case 'done': {
             deductCredits(event.creditsUsed);
+            setProcessing(false);
             const agentName = useAuthStore.getState().profile?.agentName;
             notifyResponseReady(agentName);
             break;
@@ -101,13 +110,14 @@ export function useVoiceFlow() {
 
           case 'error':
             console.error('Agent error:', event.message);
+            setProcessing(false);
             break;
         }
       } catch {
         // Skip malformed SSE lines
       }
     },
-    [deductCredits, setLastResponse, processAudioQueue],
+    [deductCredits, setLastResponse, setProcessing, processAudioQueue],
   );
 
   // Process SSE stream from /agent/voice using XMLHttpRequest
@@ -125,6 +135,7 @@ export function useVoiceFlow() {
         }
 
         cancelledRef.current = false;
+        receivedFirstChunkRef.current = false;
         audioQueueRef.current = [];
         clearPreparedAudio();
         const fullTextRef = {value: ''};
@@ -201,7 +212,7 @@ export function useVoiceFlow() {
         });
 
         // Stream agent response with ElevenLabs TTS
-        setProcessing(false);
+        // Processing stays true until first token arrives (handled in handleSSELine)
         await streamAgentResponse(transcribedText);
 
         // Add assistant response to chat history

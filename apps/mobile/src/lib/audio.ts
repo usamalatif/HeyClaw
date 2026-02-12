@@ -254,19 +254,39 @@ export async function startSpeechRecognition(
 
 /**
  * Stop speech recognition and return the final transcribed text.
+ * Waits for the final onSpeechResults callback after Voice.stop()
+ * so the last few words aren't cut off.
  */
 export async function stopSpeechRecognition(): Promise<string> {
-  try {
-    await Voice.stop();
-  } catch {
-    // Ignore
-  }
-  Voice.onSpeechResults = undefined as any;
-  Voice.onSpeechPartialResults = undefined as any;
-  const result = recognitionFinalText;
-  recognitionCallback = null;
-  recognitionFinalText = '';
-  return result;
+  return new Promise<string>(resolve => {
+    // Capture the final result callback that fires after Voice.stop()
+    const timeout = setTimeout(() => {
+      // Safety fallback — resolve with whatever we have after 1.5s
+      cleanup();
+      resolve(recognitionFinalText);
+    }, 1500);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      Voice.onSpeechResults = undefined as any;
+      Voice.onSpeechPartialResults = undefined as any;
+      const result = recognitionFinalText;
+      recognitionCallback = null;
+      recognitionFinalText = '';
+      resolve(result);
+    };
+
+    // Listen for the final results event that Voice.stop() triggers
+    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+      const text = e.value?.[0] || '';
+      recognitionFinalText = text;
+      recognitionCallback?.(text);
+      // Small delay to let iOS flush any remaining results
+      setTimeout(cleanup, 200);
+    };
+
+    Voice.stop().catch(() => {});
+  });
 }
 
 /**

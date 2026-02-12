@@ -130,3 +130,29 @@ export async function deleteAgentContainer(containerId: string): Promise<void> {
 export function getAgentUrl(userId: string): string {
   return `http://${containerName(userId)}:18789`;
 }
+
+// Execute a command inside a container and return stdout
+export async function execInContainer(containerId: string, cmd: string[]): Promise<string> {
+  const container = docker.getContainer(containerId);
+  const exec = await container.exec({
+    Cmd: cmd,
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+
+  return new Promise<string>((resolve, reject) => {
+    exec.start({}, (err: any, stream: any) => {
+      if (err) return reject(err);
+      if (!stream) return resolve('');
+
+      const chunks: Buffer[] = [];
+      const stdout = new (require('stream').PassThrough)();
+      const stderr = new (require('stream').PassThrough)();
+      docker.modem.demuxStream(stream, stdout, stderr);
+
+      stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      stream.on('error', reject);
+    });
+  });
+}

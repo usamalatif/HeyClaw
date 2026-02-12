@@ -40,3 +40,26 @@ export async function notifyResponseReady(agentName?: string): Promise<void> {
     },
   });
 }
+
+export async function notifyAutomationResult(
+  jobName: string,
+  result: string,
+  agentName?: string,
+): Promise<void> {
+  const title = agentName ?? 'HeyClaw';
+  const body = `${jobName}: ${result.length > 100 ? result.slice(0, 100) + '...' : result}`;
+
+  await notifee.displayNotification({
+    title,
+    body,
+    ios: {
+      sound: 'default',
+      foregroundPresentationOptions: {
+        badge: true,
+        sound: true,
+        banner: true,
+        list: true,
+      },
+    },
+  });
+}

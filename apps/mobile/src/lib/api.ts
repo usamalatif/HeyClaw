@@ -83,4 +83,19 @@ export const api = {
     }),
   deleteSession: (id: string) =>
     request<any>(`/chat/sessions/${id}`, {method: 'DELETE'}),
+
+  // Automation
+  checkAutomation: () =>
+    request<any>('/automation/check', {method: 'POST'}),
+  getAutomationUnseen: () =>
+    request<any>('/automation/unseen'),
+  markAutomationSeen: (ids?: string[]) =>
+    request<any>('/automation/mark-seen', {
+      method: 'POST',
+      body: JSON.stringify({ids}),
+    }),
+  getAutomationJobs: () =>
+    request<any>('/automation/jobs'),
+  getAutomationRuns: (limit?: number) =>
+    request<any>(`/automation/runs${limit ? `?limit=${limit}` : ''}`),
 };

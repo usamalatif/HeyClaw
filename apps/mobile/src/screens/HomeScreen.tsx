@@ -9,6 +9,7 @@ import {
 import {useAuthStore, useVoiceStore} from '../lib/store';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
 import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} from '../lib/audio';
+import VoiceOrb from '../components/VoiceOrb';
 
 const CREDIT_COST = 10;
 
@@ -96,13 +97,23 @@ export default function HomeScreen() {
         </Text>
       </View>
 
-      {/* Agent avatar area */}
+      {/* Animated voice orb */}
       <View style={styles.avatarArea}>
-        <View style={styles.avatar}>
+        <VoiceOrb
+          state={
+            isRecording
+              ? 'recording'
+              : isProcessing
+              ? 'processing'
+              : isPlaying
+              ? 'playing'
+              : 'idle'
+          }
+          size={100}>
           <Text style={styles.avatarEmoji}>
             {isRecording ? '\uD83C\uDFA4' : isProcessing ? '\uD83E\uDD14' : isPlaying ? '\uD83D\uDD0A' : '\uD83E\uDD9E'}
           </Text>
-        </View>
+        </VoiceOrb>
         <Text style={styles.agentName}>{profile?.agentName ?? 'HeyClaw'}</Text>
       </View>
 
@@ -123,13 +134,6 @@ export default function HomeScreen() {
 
       {/* Bottom area pinned */}
       <View style={styles.bottomArea}>
-        {/* Waveform placeholder */}
-        <View style={styles.waveformArea}>
-          <Text style={styles.waveformPlaceholder}>
-            {isRecording || isPlaying ? '~~~~~~~~~~~~' : ''}
-          </Text>
-        </View>
-
         {/* Voice button */}
         {isProcessing || isPlaying ? (
           <Pressable style={styles.stopButton} onPress={handleStopPress}>
@@ -180,18 +184,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   avatarArea: {
-    marginTop: 40,
+    marginTop: 20,
     alignItems: 'center',
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#1a1a1a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#333',
   },
   avatarEmoji: {
     fontSize: 40,
@@ -231,15 +225,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 40,
   },
-  waveformArea: {
-    height: 40,
-    justifyContent: 'center',
-  },
-  waveformPlaceholder: {
-    color: '#ff6b35',
-    fontSize: 20,
-    letterSpacing: 2,
-  },
   voiceButton: {
     width: 120,
     height: 120,
@@ -247,7 +232,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ff6b35',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 16,
   },
   voiceButtonPressed: {
     backgroundColor: '#cc5529',
@@ -266,7 +251,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e63946',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 32,
+    marginTop: 16,
   },
   voiceButtonText: {
     color: '#fff',

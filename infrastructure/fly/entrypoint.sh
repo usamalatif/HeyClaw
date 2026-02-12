@@ -10,10 +10,13 @@ mkdir -p /root/.openclaw/workspace
 # Generate OpenClaw config from environment variables
 cat > /root/.openclaw/openclaw.json << EOF
 {
+  "env": {
+    "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+  },
   "agents": {
     "defaults": {
       "model": {
-        "primary": "${OPENCLAW_MODEL:-openai/gpt-5-nano-2025-08-07}"
+        "primary": "${OPENCLAW_MODEL:-openai/gpt-5-nano}"
       }
     }
   },

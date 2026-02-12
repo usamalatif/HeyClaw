@@ -40,8 +40,15 @@ async function ensureAgentRunning(userId: string): Promise<string> {
   if (user?.agent_machine_id && user?.agent_gateway_token) {
     const status = await getAgentStatus(user.agent_machine_id);
     if (status === 'running') {
-      // Container already running — no health check needed
+      // Container running — quick ping to verify OpenClaw is responsive
       gatewayToken = user.agent_gateway_token;
+      const agentUrl = getAgentUrl(userId);
+      try {
+        await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(3000)});
+      } catch {
+        // OpenClaw not responding yet (e.g. after container restart) — wait for it
+        needsHealthCheck = true;
+      }
     } else if (status === 'stopped') {
       try {
         await startAgentContainer(user.agent_machine_id);

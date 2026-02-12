@@ -1,90 +1,153 @@
-import React, {useEffect, useState} from 'react';
-import {View, Text, StyleSheet, ActivityIndicator, TouchableOpacity} from 'react-native';
+import React, {useEffect, useState, useRef} from 'react';
+import {View, Text, StyleSheet, Animated, Easing, TouchableOpacity} from 'react-native';
 import {api} from '../lib/api';
 import {useAuthStore} from '../lib/store';
 import {supabase} from '../lib/supabase';
 
-const steps = [
-  'Creating your AI agent',
-  'Configuring personality',
-  'Almost ready...',
+const STEPS = [
+  {label: 'Connecting to server', duration: 800},
+  {label: 'Creating AI agent', duration: 0}, // waits for API
+  {label: 'Loading intelligence model', duration: 0}, // waits for polling
+  {label: 'Setting up memory & tools', duration: 1200},
+  {label: 'Running final checks', duration: 0}, // waits for health
+  {label: 'Ready to go!', duration: 600},
 ];
+
+function SpinnerIcon() {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start();
+  }, [spin]);
+
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View style={{transform: [{rotate}]}}>
+      <View style={styles.spinnerDot} />
+    </Animated.View>
+  );
+}
 
 export default function ProvisioningScreen() {
   const [currentStep, setCurrentStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const setProvisioned = useAuthStore(s => s.setProvisioned);
   const setProfile = useAuthStore(s => s.setProfile);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  // Animate progress bar
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: (currentStep + 1) / STEPS.length,
+      duration: 400,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [currentStep, progressAnim]);
 
   useEffect(() => {
     let cancelled = false;
 
+    const advanceStep = (step: number) => {
+      if (!cancelled) setCurrentStep(step);
+    };
+
+    const wait = (ms: number) =>
+      new Promise<void>(r => setTimeout(r, ms));
+
     const provision = async () => {
       try {
-        // Step 1: Trigger provisioning
-        setCurrentStep(0);
-        const result = await api.provisionAgent();
-
+        // Step 0: Connecting
+        advanceStep(0);
+        await wait(STEPS[0].duration);
         if (cancelled) return;
 
-        if (result.agentStatus === 'running' || result.agentStatus === 'sleeping') {
-          // Already done — advance steps visually then proceed
-          setCurrentStep(1);
-          await new Promise(r => setTimeout(r, 500));
-          if (cancelled) return;
-          setCurrentStep(2);
-          await new Promise(r => setTimeout(r, 500));
-          if (cancelled) return;
+        // Step 1: Creating agent (API call)
+        advanceStep(1);
+        const result = await api.provisionAgent();
+        if (cancelled) return;
 
-          // Reload profile with updated agent status
-          try {
-            const user = await api.getMe();
-            setProfile({
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              plan: user.plan,
-              creditsRemaining: user.credits_remaining,
-              creditsMonthlyLimit: user.credits_monthly_limit,
-              agentStatus: user.agent_status,
-              agentName: user.agent_name,
-              ttsVoice: user.tts_voice,
-              ttsSpeed: user.tts_speed,
-            });
-          } catch {
-            // Profile load failed, proceed anyway
+        const alreadyRunning =
+          result.agentStatus === 'running' || result.agentStatus === 'sleeping';
+
+        // Step 2: Loading model (poll until container is up)
+        advanceStep(2);
+        if (!alreadyRunning) {
+          let ready = false;
+          for (let i = 0; i < 30 && !cancelled; i++) {
+            try {
+              const status = await api.getAgentStatus();
+              if (status.agentStatus === 'running' || status.agentStatus === 'sleeping') {
+                ready = true;
+                break;
+              }
+            } catch {
+              // Not ready yet
+            }
+            await wait(2000);
           }
+          if (cancelled) return;
+          if (!ready) throw new Error('Agent took too long to start');
+        } else {
+          await wait(800);
+        }
+        if (cancelled) return;
 
-          setProvisioned(true);
-          return;
+        // Step 3: Setting up memory & tools
+        advanceStep(3);
+        await wait(STEPS[3].duration);
+        if (cancelled) return;
+
+        // Step 4: Final checks — wait for OpenClaw gateway to actually respond
+        advanceStep(4);
+        // The API's ensureAgentRunning does a health check, so calling any endpoint validates it
+        let healthOk = false;
+        for (let i = 0; i < 15 && !cancelled; i++) {
+          try {
+            await api.getAgentStatus();
+            healthOk = true;
+            break;
+          } catch {
+            await wait(2000);
+          }
+        }
+        if (cancelled) return;
+        if (!healthOk) throw new Error('Could not verify agent health');
+
+        // Step 5: Ready!
+        advanceStep(5);
+
+        // Reload profile
+        try {
+          const user = await api.getMe();
+          setProfile({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            plan: user.plan,
+            creditsRemaining: user.credits_remaining,
+            creditsMonthlyLimit: user.credits_monthly_limit,
+            agentStatus: user.agent_status,
+            agentName: user.agent_name,
+            ttsVoice: user.tts_voice,
+            ttsSpeed: user.tts_speed,
+          });
+        } catch {
+          // Proceed anyway
         }
 
-        // Still provisioning — poll until ready
-        setCurrentStep(1);
-        const poll = async () => {
-          if (cancelled) return;
-          try {
-            const status = await api.getAgentStatus();
-            if (
-              status.agentStatus === 'running' ||
-              status.agentStatus === 'sleeping'
-            ) {
-              setCurrentStep(2);
-              await new Promise(r => setTimeout(r, 500));
-              if (!cancelled) setProvisioned(true);
-              return;
-            }
-          } catch {
-            // Not ready yet
-          }
-
-          if (!cancelled) {
-            setCurrentStep(prev => Math.min(prev + 1, steps.length - 1));
-            setTimeout(poll, 2000);
-          }
-        };
-
-        setTimeout(poll, 2000);
+        await wait(STEPS[5].duration);
+        if (!cancelled) setProvisioned(true);
       } catch (err: any) {
         if (!cancelled) {
           setError(err.message || 'Failed to set up your agent');
@@ -98,48 +161,69 @@ export default function ProvisioningScreen() {
     };
   }, [setProvisioned, setProfile]);
 
-  const progress = ((currentStep + 1) / steps.length) * 100;
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <View style={styles.container}>
       <Text style={styles.logo}>HeyClaw</Text>
-      <Text style={styles.title}>Setting up your agent...</Text>
+      <Text style={styles.title}>Setting up your agent</Text>
+      <Text style={styles.subtitle}>This only takes a moment</Text>
 
       <View style={styles.progressBar}>
-        <View style={[styles.progressFill, {width: `${progress}%`}]} />
+        <Animated.View style={[styles.progressFill, {width: progressWidth}]} />
       </View>
-      <Text style={styles.progressText}>{Math.round(progress)}%</Text>
 
-      {steps.map((step, i) => (
-        <View key={i} style={styles.stepRow}>
-          <Text style={styles.stepIcon}>
-            {i < currentStep ? '\u2713' : '\u25E6'}
-          </Text>
-          <Text
-            style={[styles.stepText, i <= currentStep && styles.stepActive]}>
-            {step}
-          </Text>
-        </View>
-      ))}
+      <View style={styles.stepsContainer}>
+        {STEPS.map((step, i) => {
+          const isComplete = i < currentStep;
+          const isActive = i === currentStep && !error;
+          const isPending = i > currentStep;
 
-      {error ? (
-        <>
+          return (
+            <View key={i} style={styles.stepRow}>
+              <View style={styles.stepIconContainer}>
+                {isComplete ? (
+                  <Text style={styles.checkmark}>{'\u2713'}</Text>
+                ) : isActive ? (
+                  <SpinnerIcon />
+                ) : (
+                  <View style={styles.pendingDot} />
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.stepText,
+                  isComplete && styles.stepComplete,
+                  isActive && styles.stepActive,
+                  isPending && styles.stepPending,
+                ]}>
+                {step.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {error && (
+        <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => {
+              setError(null);
+              setCurrentStep(0);
+            }}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.signOutBtn}
             onPress={() => supabase.auth.signOut()}>
             <Text style={styles.signOutText}>Sign Out</Text>
           </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <ActivityIndicator
-            color="#ff6b35"
-            style={styles.spinner}
-            size="small"
-          />
-          <Text style={styles.hint}>This only takes a moment</Text>
-        </>
+        </View>
       )}
     </View>
   );
@@ -154,68 +238,108 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   logo: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: '#ff6b35',
-    marginBottom: 24,
+    marginBottom: 12,
+    letterSpacing: 1,
   },
   title: {
     fontSize: 20,
     fontWeight: '600',
     color: '#fff',
-    marginBottom: 24,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 32,
   },
   progressBar: {
     width: '100%',
-    height: 6,
+    height: 4,
     backgroundColor: '#1a1a1a',
-    borderRadius: 3,
-    marginBottom: 8,
+    borderRadius: 2,
+    marginBottom: 32,
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: '#ff6b35',
-    borderRadius: 3,
+    borderRadius: 2,
   },
-  progressText: {
-    color: '#999',
-    fontSize: 14,
-    marginBottom: 24,
+  stepsContainer: {
+    width: '100%',
   },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    width: '100%',
+    marginBottom: 16,
+    height: 24,
   },
-  stepIcon: {
-    color: '#ff6b35',
-    fontSize: 16,
+  stepIconContainer: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
-  stepText: {
-    color: '#666',
+  checkmark: {
+    color: '#22c55e',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  spinnerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ff6b35',
+    borderTopColor: 'transparent',
+  },
+  pendingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#333',
+  },
+  stepText: {
+    fontSize: 15,
+    color: '#666',
+  },
+  stepComplete: {
+    color: '#22c55e',
   },
   stepActive: {
     color: '#fff',
+    fontWeight: '600',
   },
-  spinner: {
+  stepPending: {
+    color: '#444',
+  },
+  errorContainer: {
     marginTop: 32,
-  },
-  hint: {
-    color: '#666',
-    fontSize: 14,
-    marginTop: 16,
+    alignItems: 'center',
   },
   errorText: {
     color: '#e63946',
     fontSize: 14,
-    marginTop: 32,
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    backgroundColor: '#ff6b35',
+    marginBottom: 12,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   signOutBtn: {
-    marginTop: 20,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,

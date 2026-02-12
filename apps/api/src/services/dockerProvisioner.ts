@@ -68,7 +68,7 @@ export async function createAgentContainer(userId: string): Promise<AgentProvisi
     HostConfig: {
       NetworkMode: NETWORK_NAME,
       RestartPolicy: {Name: 'unless-stopped'},
-      Memory: 512 * 1024 * 1024, // 512MB
+      Memory: 1024 * 1024 * 1024, // 1GB
       NanoCpus: 500000000, // 0.5 CPU
     },
     NetworkingConfig: {

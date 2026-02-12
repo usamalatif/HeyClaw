@@ -13,10 +13,23 @@ cat > /root/.openclaw/openclaw.json << EOF
   "env": {
     "OPENAI_API_KEY": "${OPENAI_API_KEY}"
   },
+  "models": {
+    "providers": {
+      "openai-custom": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "gpt-5-nano", "name": "GPT-5 Nano" },
+          { "id": "gpt-5-nano-2025-08-07", "name": "GPT-5 Nano (dated)" }
+        ]
+      }
+    }
+  },
   "agents": {
     "defaults": {
       "model": {
-        "primary": "${OPENCLAW_MODEL:-openai/gpt-5-nano}"
+        "primary": "${OPENCLAW_MODEL:-openai-custom/gpt-5-nano}"
       }
     }
   },

@@ -34,17 +34,20 @@ async function ensureAgentRunning(userId: string): Promise<string> {
     .single();
 
   let gatewayToken: string | undefined;
+  let needsHealthCheck = false;
 
   // Already provisioned — check if container is actually running
   if (user?.agent_machine_id && user?.agent_gateway_token) {
     const status = await getAgentStatus(user.agent_machine_id);
     if (status === 'running') {
+      // Container already running — no health check needed
       gatewayToken = user.agent_gateway_token;
     } else if (status === 'stopped') {
       try {
         await startAgentContainer(user.agent_machine_id);
         await supabase.from('users').update({agent_status: 'running'}).eq('id', userId);
         gatewayToken = user.agent_gateway_token;
+        needsHealthCheck = true; // Just started — need to wait for OpenClaw
       } catch {
         // Container gone — fall through to re-provision
       }
@@ -63,10 +66,14 @@ async function ensureAgentRunning(userId: string): Promise<string> {
         agent_status: 'running',
       })
       .eq('id', userId);
+    needsHealthCheck = true; // Freshly provisioned — need to wait for OpenClaw
   }
 
-  // Always verify OpenClaw is actually responding before returning
-  await waitForAgent(userId);
+  // Only wait for OpenClaw when the container was just started or provisioned
+  if (needsHealthCheck) {
+    await waitForAgent(userId);
+  }
+
   return gatewayToken;
 }
 

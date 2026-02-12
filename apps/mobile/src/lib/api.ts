@@ -53,6 +53,7 @@ export const api = {
     }),
   // Voice streaming handled directly in useVoiceFlow via SSE (POST /agent/voice)
   getAgentStatus: () => request<any>('/agent/status'),
+  getAgentHealth: () => request<any>('/agent/health'),
   provisionAgent: () => request<any>('/agent/provision', {method: 'POST'}),
   wakeAgent: () => request<any>('/agent/wake', {method: 'POST'}),
 

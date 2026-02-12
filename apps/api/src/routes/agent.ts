@@ -375,6 +375,32 @@ agentRoutes.get('/status', async c => {
   return c.json({agentStatus: data.agent_status, machineId: data.agent_machine_id});
 });
 
+// Health check — actually pings the OpenClaw gateway inside the container
+agentRoutes.get('/health', async c => {
+  const userId = c.get('userId');
+
+  const {data: user} = await supabase
+    .from('users')
+    .select('agent_machine_id, agent_gateway_token, agent_status')
+    .eq('id', userId)
+    .single();
+
+  if (!user?.agent_machine_id) {
+    return c.json({healthy: false, reason: 'no_agent'});
+  }
+
+  const agentUrl = getAgentUrl(userId);
+  try {
+    const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(5000)});
+    if (res.ok) {
+      return c.json({healthy: true, agentStatus: user.agent_status});
+    }
+    return c.json({healthy: false, reason: 'not_ok', status: res.status});
+  } catch {
+    return c.json({healthy: false, reason: 'unreachable'});
+  }
+});
+
 agentRoutes.post('/wake', async c => {
   const userId = c.get('userId');
 

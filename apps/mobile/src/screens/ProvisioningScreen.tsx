@@ -108,21 +108,23 @@ export default function ProvisioningScreen() {
         await wait(STEPS[3].duration);
         if (cancelled) return;
 
-        // Step 4: Final checks — wait for OpenClaw gateway to actually respond
+        // Step 4: Final checks — wait for OpenClaw gateway to actually respond to HTTP
         advanceStep(4);
-        // The API's ensureAgentRunning does a health check, so calling any endpoint validates it
         let healthOk = false;
-        for (let i = 0; i < 15 && !cancelled; i++) {
+        for (let i = 0; i < 45 && !cancelled; i++) {
           try {
-            await api.getAgentStatus();
-            healthOk = true;
-            break;
+            const health = await api.getAgentHealth();
+            if (health.healthy) {
+              healthOk = true;
+              break;
+            }
           } catch {
-            await wait(2000);
+            // API or container not ready yet
           }
+          await wait(2000);
         }
         if (cancelled) return;
-        if (!healthOk) throw new Error('Could not verify agent health');
+        if (!healthOk) throw new Error('Agent is starting up — please try again in a moment');
 
         // Step 5: Ready!
         advanceStep(5);

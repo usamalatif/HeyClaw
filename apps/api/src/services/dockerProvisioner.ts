@@ -2,6 +2,7 @@
 // Replaces Fly.io Machines — runs containers on the same host via Docker socket
 import Docker from 'dockerode';
 import crypto from 'crypto';
+import {PassThrough} from 'stream';
 
 const docker = new Docker({socketPath: '/var/run/docker.sock'});
 
@@ -146,8 +147,8 @@ export async function execInContainer(containerId: string, cmd: string[]): Promi
       if (!stream) return resolve('');
 
       const chunks: Buffer[] = [];
-      const stdout = new (require('stream').PassThrough)();
-      const stderr = new (require('stream').PassThrough)();
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
       docker.modem.demuxStream(stream, stdout, stderr);
 
       stdout.on('data', (chunk: Buffer) => chunks.push(chunk));

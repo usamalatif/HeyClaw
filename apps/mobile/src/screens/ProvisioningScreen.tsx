@@ -84,7 +84,7 @@ export default function ProvisioningScreen() {
         advanceStep(2);
         if (!alreadyRunning) {
           let ready = false;
-          for (let i = 0; i < 30 && !cancelled; i++) {
+          for (let i = 0; i < 60 && !cancelled; i++) {
             try {
               const status = await api.getAgentStatus();
               if (status.agentStatus === 'running' || status.agentStatus === 'sleeping') {
@@ -111,7 +111,7 @@ export default function ProvisioningScreen() {
         // Step 4: Final checks — wait for OpenClaw gateway to actually respond to HTTP
         advanceStep(4);
         let healthOk = false;
-        for (let i = 0; i < 45 && !cancelled; i++) {
+        for (let i = 0; i < 90 && !cancelled; i++) {
           try {
             const health = await api.getAgentHealth();
             if (health.healthy) {

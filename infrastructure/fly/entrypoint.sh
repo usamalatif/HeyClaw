@@ -2,7 +2,7 @@
 set -e
 
 # Increase Node.js heap for OpenClaw
-export NODE_OPTIONS="--max-old-space-size=768"
+export NODE_OPTIONS="--max-old-space-size=1536"
 
 # Create config directory
 mkdir -p /root/.openclaw/workspace

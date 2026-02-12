@@ -121,11 +121,8 @@ automationRoutes.get('/runs', async c => {
   }
 
   // Sort by timestamp descending (most recent first)
-  allRuns.sort((a, b) => {
-    const timeA = new Date(a.completedAt || a.startedAt || a.ts || 0).getTime();
-    const timeB = new Date(b.completedAt || b.startedAt || b.ts || 0).getTime();
-    return timeB - timeA;
-  });
+  // OpenClaw uses `ts` (ms epoch) for completion time
+  allRuns.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
   return c.json({runs: allRuns.slice(0, limit)});
 });
@@ -172,16 +169,15 @@ automationRoutes.post('/check', async c => {
   for (const jobId of jobIds) {
     const runs = await readCronRuns(user.agent_machine_id, jobId, 50);
     for (const run of runs) {
-      const runTime = new Date(
-        run.completedAt || run.startedAt || run.ts || 0,
-      ).getTime();
+      // OpenClaw run format: { ts (ms), summary, status, runAtMs, durationMs, jobId }
+      const runTime = run.ts || 0;
 
-      if (runTime > lastCheckTime && run.output) {
+      if (runTime > lastCheckTime && run.summary) {
         const result = {
           user_id: userId,
-          job_id: jobId,
-          job_name: jobNameMap.get(jobId) || jobId,
-          result: typeof run.output === 'string' ? run.output : JSON.stringify(run.output),
+          job_id: run.jobId || jobId,
+          job_name: jobNameMap.get(run.jobId || jobId) || run.jobId || jobId,
+          result: run.summary,
           run_at: new Date(runTime).toISOString(),
           seen: false,
         };

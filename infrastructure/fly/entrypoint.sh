@@ -28,7 +28,7 @@ cat > /root/.openclaw/openclaw.json << EOF
   },
   "cron": {
     "enabled": true,
-    "maxConcurrentRuns": 2
+    "maxConcurrentRuns": 1
   },
   "hooks": {
     "enabled": true,

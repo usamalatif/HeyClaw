@@ -13,7 +13,7 @@ cat > /root/.openclaw/openclaw.json << EOF
   "agents": {
     "defaults": {
       "model": {
-        "primary": "${OPENCLAW_MODEL:-anthropic/claude-sonnet-4-5-20250929}"
+        "primary": "${OPENCLAW_MODEL:-openai/gpt-5-nano-2025-08-07}"
       }
     }
   },

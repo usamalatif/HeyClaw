@@ -4,10 +4,54 @@ import {authMiddleware} from '../middleware/auth.js';
 import {supabase} from '../lib/supabase.js';
 import type {AppEnv} from '../lib/types.js';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
-import {createAgentContainer, startAgentContainer} from '../services/dockerProvisioner.js';
+import {createAgentContainer, startAgentContainer, getAgentStatus} from '../services/dockerProvisioner.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
 
 const CREDIT_COST = 10;
+
+// Ensure the user's OpenClaw container is provisioned and running.
+// Returns the gateway token needed for API calls.
+async function ensureAgentRunning(userId: string): Promise<string> {
+  const {data: user} = await supabase
+    .from('users')
+    .select('agent_machine_id, agent_gateway_token, agent_status')
+    .eq('id', userId)
+    .single();
+
+  // Already provisioned — check if container is actually running
+  if (user?.agent_machine_id && user?.agent_gateway_token) {
+    const status = await getAgentStatus(user.agent_machine_id);
+    if (status === 'running') {
+      return user.agent_gateway_token;
+    }
+    // Container exists but stopped — try to start it
+    if (status === 'stopped') {
+      try {
+        await startAgentContainer(user.agent_machine_id);
+        await supabase.from('users').update({agent_status: 'running'}).eq('id', userId);
+        return user.agent_gateway_token;
+      } catch {
+        // Container gone — fall through to re-provision
+      }
+    }
+  }
+
+  // Provision a new container
+  const {containerId, gatewayToken} = await createAgentContainer(userId);
+  await supabase
+    .from('users')
+    .update({
+      agent_machine_id: containerId,
+      agent_gateway_token: gatewayToken,
+      agent_status: 'running',
+    })
+    .eq('id', userId);
+
+  // Wait briefly for OpenClaw to start up inside the container
+  await new Promise(r => setTimeout(r, 3000));
+
+  return gatewayToken;
+}
 
 export const agentRoutes = new Hono<AppEnv>();
 
@@ -23,7 +67,7 @@ agentRoutes.post('/message', async c => {
 
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_gateway_token')
+    .select('credits_remaining')
     .eq('id', userId)
     .single();
 
@@ -38,10 +82,13 @@ agentRoutes.post('/message', async c => {
     );
   }
 
+  // Auto-provision/start the container if needed
+  const gatewayToken = await ensureAgentRunning(userId);
+
   const response = await sendToOpenClaw(
     userId,
     [{role: 'user', content: text}],
-    user.agent_gateway_token,
+    gatewayToken,
   );
 
   const newCredits = user.credits_remaining - CREDIT_COST;
@@ -70,7 +117,7 @@ agentRoutes.post('/voice', async (c) => {
 
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, tts_voice, agent_gateway_token')
+    .select('credits_remaining, tts_voice')
     .eq('id', userId)
     .single();
 
@@ -84,6 +131,9 @@ agentRoutes.post('/voice', async (c) => {
       402,
     );
   }
+
+  // Auto-provision/start the container if needed
+  const gatewayToken = await ensureAgentRunning(userId);
 
   const VALID_VOICES = ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'];
   const rawVoice = voice || user.tts_voice;
@@ -169,7 +219,7 @@ agentRoutes.post('/voice', async (c) => {
       };
 
       // All requests go through OpenClaw
-      const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
+      const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], gatewayToken);
       for await (const chunk of openclawStream) {
         buffer += chunk;
         fullText += chunk;

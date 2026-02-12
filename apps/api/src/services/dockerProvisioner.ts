@@ -60,7 +60,7 @@ export async function createAgentContainer(userId: string): Promise<AgentProvisi
     Env: [
       `USER_ID=${userId}`,
       `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ''}`,
-      `OPENCLAW_MODEL=${process.env.OPENCLAW_MODEL || 'openai/gpt-4o-mini'}`,
+      `OPENCLAW_MODEL=${process.env.OPENCLAW_MODEL || 'openai/gpt-5-nano-2025-08-07'}`,
       `OPENCLAW_PORT=18789`,
       `OPENCLAW_GATEWAY_TOKEN=${gatewayToken}`,
     ],

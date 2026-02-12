@@ -4,7 +4,7 @@ import {authMiddleware} from '../middleware/auth.js';
 import {supabase} from '../lib/supabase.js';
 import type {AppEnv} from '../lib/types.js';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
-import {createAgentContainer, startAgentContainer, getAgentStatus} from '../services/dockerProvisioner.js';
+import {createAgentContainer, startAgentContainer, getAgentStatus, getAgentUrl} from '../services/dockerProvisioner.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
 
 const CREDIT_COST = 10;
@@ -47,10 +47,19 @@ async function ensureAgentRunning(userId: string): Promise<string> {
     })
     .eq('id', userId);
 
-  // Wait briefly for OpenClaw to start up inside the container
-  await new Promise(r => setTimeout(r, 3000));
-
-  return gatewayToken;
+  // Wait for OpenClaw to be ready (poll health check)
+  const agentUrl = getAgentUrl(userId);
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(2000)});
+      if (res.ok) return gatewayToken;
+    } catch {
+      // Not ready yet
+    }
+  }
+  throw new Error('Agent container failed to start within 60 seconds');
+}
 }
 
 export const agentRoutes = new Hono<AppEnv>();

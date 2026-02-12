@@ -46,10 +46,10 @@ export const api = {
   getCredits: () => request<any>('/user/credits'),
 
   // Agent
-  sendMessage: (text: string, modelTier: string) =>
+  sendMessage: (text: string) =>
     request<any>('/agent/message', {
       method: 'POST',
-      body: JSON.stringify({text, modelTier}),
+      body: JSON.stringify({text}),
     }),
   // Voice streaming handled directly in useVoiceFlow via SSE (POST /agent/voice)
   getAgentStatus: () => request<any>('/agent/status'),

@@ -16,7 +16,7 @@ import {API_URL} from './config';
 // 3. Receive tokens (instant display) + audio chunks (ElevenLabs TTS)
 // 4. Play audio chunks sequentially with pre-buffering
 export function useVoiceFlow() {
-  const {selectedModel, deductCredits} = useAuthStore();
+  const {deductCredits} = useAuthStore();
   const {
     setRecording,
     setProcessing,
@@ -175,12 +175,11 @@ export function useVoiceFlow() {
         xhr.send(
           JSON.stringify({
             text: transcribedText,
-            modelTier: selectedModel,
           }),
         );
       });
     },
-    [selectedModel, handleSSELine],
+    [handleSSELine],
   );
 
   // Main voice flow: receives transcribed text directly (from on-device recognition)

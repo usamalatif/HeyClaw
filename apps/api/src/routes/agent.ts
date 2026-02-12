@@ -3,17 +3,11 @@ import {streamSSE} from 'hono/streaming';
 import {authMiddleware} from '../middleware/auth.js';
 import {supabase} from '../lib/supabase.js';
 import type {AppEnv} from '../lib/types.js';
-import type {ModelTier} from '@heyclaw/shared';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
 import {createAgentContainer, startAgentContainer} from '../services/dockerProvisioner.js';
-import {chatCompletion, streamChatCompletion} from '../services/chat.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
 
-const CREDIT_COSTS: Record<ModelTier, number> = {
-  standard: 10,
-  power: 30,
-  best: 100,
-};
+const CREDIT_COST = 10;
 
 export const agentRoutes = new Hono<AppEnv>();
 
@@ -21,20 +15,15 @@ agentRoutes.use('*', authMiddleware);
 
 agentRoutes.post('/message', async c => {
   const userId = c.get('userId');
-  const {text, modelTier = 'standard'} = await c.req.json();
+  const {text} = await c.req.json();
 
   if (!text?.trim()) {
     return c.json({message: 'Message text is required'}, 400);
   }
 
-  const creditCost = CREDIT_COSTS[modelTier as ModelTier];
-  if (!creditCost) {
-    return c.json({message: 'Invalid model tier'}, 400);
-  }
-
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_personality, agent_machine_id, agent_gateway_token')
+    .select('credits_remaining, agent_gateway_token')
     .eq('id', userId)
     .single();
 
@@ -42,39 +31,20 @@ agentRoutes.post('/message', async c => {
     return c.json({message: 'User not found'}, 404);
   }
 
-  if (user.credits_remaining < creditCost) {
+  if (user.credits_remaining < CREDIT_COST) {
     return c.json(
-      {message: 'Insufficient credits', creditsNeeded: creditCost, creditsRemaining: user.credits_remaining},
+      {message: 'Insufficient credits', creditsNeeded: CREDIT_COST, creditsRemaining: user.credits_remaining},
       402,
     );
   }
 
-  // Only route "best" tier through OpenClaw (Sonnet) — standard/power use cheap OpenAI models
-  let response: string;
-  if (modelTier === 'best') {
-    try {
-      response = await sendToOpenClaw(
-        userId,
-        [{role: 'user', content: text}],
-        user.agent_gateway_token,
-      );
-    } catch {
-      response = await chatCompletion(
-        [{role: 'user', content: text}],
-        modelTier as ModelTier,
-        user.agent_personality,
-      );
-    }
-  } else {
-    response = await chatCompletion(
-      [{role: 'user', content: text}],
-      modelTier as ModelTier,
-      user.agent_personality,
-    );
-  }
+  const response = await sendToOpenClaw(
+    userId,
+    [{role: 'user', content: text}],
+    user.agent_gateway_token,
+  );
 
-  // Deduct credits
-  const newCredits = user.credits_remaining - creditCost;
+  const newCredits = user.credits_remaining - CREDIT_COST;
   await supabase
     .from('users')
     .update({credits_remaining: newCredits})
@@ -83,30 +53,24 @@ agentRoutes.post('/message', async c => {
   await supabase.from('usage_logs').insert({
     user_id: userId,
     type: 'agent_message',
-    model_tier: modelTier,
-    credits_used: creditCost,
+    credits_used: CREDIT_COST,
   });
 
-  return c.json({response, creditsUsed: creditCost, creditsRemaining: newCredits});
+  return c.json({response, creditsUsed: CREDIT_COST, creditsRemaining: newCredits});
 });
 
 // Streaming voice endpoint — SSE with text + audio chunks
 agentRoutes.post('/voice', async (c) => {
   const userId = c.get('userId');
-  const {text, modelTier = 'standard', voice, nativeTts = false} = await c.req.json();
+  const {text, voice, nativeTts = false} = await c.req.json();
 
   if (!text?.trim()) {
     return c.json({message: 'Message text is required'}, 400);
   }
 
-  const creditCost = CREDIT_COSTS[modelTier as ModelTier];
-  if (!creditCost) {
-    return c.json({message: 'Invalid model tier'}, 400);
-  }
-
   const {data: user, error: userError} = await supabase
     .from('users')
-    .select('credits_remaining, agent_personality, tts_voice, agent_gateway_token')
+    .select('credits_remaining, tts_voice, agent_gateway_token')
     .eq('id', userId)
     .single();
 
@@ -114,9 +78,9 @@ agentRoutes.post('/voice', async (c) => {
     return c.json({message: 'User not found'}, 404);
   }
 
-  if (user.credits_remaining < creditCost) {
+  if (user.credits_remaining < CREDIT_COST) {
     return c.json(
-      {message: 'Insufficient credits', creditsNeeded: creditCost, creditsRemaining: user.credits_remaining},
+      {message: 'Insufficient credits', creditsNeeded: CREDIT_COST, creditsRemaining: user.credits_remaining},
       402,
     );
   }
@@ -139,7 +103,6 @@ agentRoutes.post('/voice', async (c) => {
       const processTTSQueue = async () => {
         ttsRunning = true;
         while (ttsQueue.length > 0) {
-          // Process up to 3 TTS requests in parallel for speed
           const batch = ttsQueue.splice(0, Math.min(3, ttsQueue.length));
           const results = await Promise.all(
             batch.map(item =>
@@ -147,7 +110,6 @@ agentRoutes.post('/voice', async (c) => {
                 .then(audio => ({audio, index: item.index}))
             ),
           );
-          // Send in original order
           for (const result of results) {
             await stream.writeSSE({
               data: JSON.stringify({type: 'audio', data: result.audio, index: result.index}),
@@ -199,7 +161,6 @@ agentRoutes.post('/voice', async (c) => {
         }
       };
 
-      // Stream text tokens to client immediately for instant display
       const sendToken = async (token: string) => {
         await stream.writeSSE({
           data: JSON.stringify({type: 'token', data: token}),
@@ -207,56 +168,27 @@ agentRoutes.post('/voice', async (c) => {
         });
       };
 
-      // Only route "best" tier through OpenClaw (Sonnet)
-      // Standard/power use cheap OpenAI models directly
-      const streamChunks = async (gen: AsyncGenerator<string>) => {
-        for await (const chunk of gen) {
-          buffer += chunk;
-          fullText += chunk;
-          await sendToken(chunk);
+      // All requests go through OpenClaw
+      const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
+      for await (const chunk of openclawStream) {
+        buffer += chunk;
+        fullText += chunk;
+        await sendToken(chunk);
 
-          if (sentenceIndex === 0 && buffer.length > 25) {
-            await flushSentences(true);
-          } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
-            await flushSentences(false);
-          }
+        if (sentenceIndex === 0 && buffer.length > 25) {
+          await flushSentences(true);
+        } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
+          await flushSentences(false);
         }
-      };
-
-      if (modelTier === 'best') {
-        let usedOpenClaw = false;
-        try {
-          const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], user.agent_gateway_token);
-          // Peek first chunk to detect if OpenClaw is alive
-          for await (const chunk of openclawStream) {
-            usedOpenClaw = true;
-            buffer += chunk;
-            fullText += chunk;
-            await sendToken(chunk);
-
-            if (sentenceIndex === 0 && buffer.length > 25) {
-              await flushSentences(true);
-            } else if (/[.!?]\s/.test(buffer) || (buffer.length > 30 && /[,;:]\s/.test(buffer))) {
-              await flushSentences(false);
-            }
-          }
-        } catch {
-          if (!usedOpenClaw) {
-            await streamChunks(streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality));
-          }
-        }
-      } else {
-        await streamChunks(streamChatCompletion([{role: 'user', content: text}], modelTier as ModelTier, user.agent_personality));
       }
 
       await flushSentences(true);
 
-      // Wait for all TTS audio chunks to finish (skip if native TTS)
       if (!nativeTts) {
         await waitForTTS();
       }
 
-      const newCredits = user.credits_remaining - creditCost;
+      const newCredits = user.credits_remaining - CREDIT_COST;
       await supabase
         .from('users')
         .update({credits_remaining: newCredits})
@@ -265,14 +197,13 @@ agentRoutes.post('/voice', async (c) => {
       await supabase.from('usage_logs').insert({
         user_id: userId,
         type: 'agent_message',
-        model_tier: modelTier,
-        credits_used: creditCost,
+        credits_used: CREDIT_COST,
       });
 
       await stream.writeSSE({
         data: JSON.stringify({
           type: 'done',
-          creditsUsed: creditCost,
+          creditsUsed: CREDIT_COST,
           creditsRemaining: newCredits,
           fullText,
         }),
@@ -301,12 +232,10 @@ agentRoutes.post('/provision', async c => {
     return c.json({message: 'User not found'}, 404);
   }
 
-  // Already provisioned
   if (user.agent_machine_id && user.agent_status === 'running') {
     return c.json({agentStatus: 'running', machineId: user.agent_machine_id});
   }
 
-  // If sleeping, wake it
   if (user.agent_machine_id && user.agent_status === 'sleeping') {
     try {
       await startAgentContainer(user.agent_machine_id);
@@ -320,7 +249,6 @@ agentRoutes.post('/provision', async c => {
     }
   }
 
-  // Set status to provisioning
   await supabase
     .from('users')
     .update({agent_status: 'provisioning'})

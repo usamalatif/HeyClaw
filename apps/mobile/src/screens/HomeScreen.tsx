@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Pressable,
   ScrollView,
 } from 'react-native';
@@ -11,7 +10,7 @@ import {useAuthStore, useVoiceStore} from '../lib/store';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
 import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} from '../lib/audio';
 
-const MODEL_CREDITS = {standard: 10, power: 30, best: 100} as const;
+const CREDIT_COST = 10;
 
 // Renders text with **bold** markdown support
 function FormattedText({children, style}: {children: string; style: any}) {
@@ -33,14 +32,13 @@ function FormattedText({children, style}: {children: string; style: any}) {
 }
 
 export default function HomeScreen() {
-  const {profile, selectedModel, setSelectedModel} = useAuthStore();
+  const {profile} = useAuthStore();
   const {isRecording, isProcessing, isPlaying, lastTranscription, lastResponse} =
     useVoiceStore();
   const setRecording = useVoiceStore(s => s.setRecording);
   const {processVoiceInput, cancel} = useVoiceFlow();
 
-  const creditsPerMsg = MODEL_CREDITS[selectedModel];
-  const hasCredits = (profile?.creditsRemaining ?? 0) >= creditsPerMsg;
+  const hasCredits = (profile?.creditsRemaining ?? 0) >= CREDIT_COST;
 
   const getStatusText = () => {
     if (isRecording) return 'Listening...';
@@ -96,28 +94,6 @@ export default function HomeScreen() {
         <Text style={styles.credits}>
           {profile?.creditsRemaining ?? 0} credits
         </Text>
-      </View>
-
-      {/* Model selector */}
-      <View style={styles.modelSelector}>
-        {(['standard', 'power', 'best'] as const).map(tier => (
-          <TouchableOpacity
-            key={tier}
-            style={[
-              styles.modelChip,
-              selectedModel === tier && styles.modelChipActive,
-            ]}
-            onPress={() => setSelectedModel(tier)}>
-            <Text
-              style={[
-                styles.modelChipText,
-                selectedModel === tier && styles.modelChipTextActive,
-              ]}>
-              {tier.charAt(0).toUpperCase() + tier.slice(1)}
-            </Text>
-            <Text style={styles.modelCredits}>{MODEL_CREDITS[tier]} cr</Text>
-          </TouchableOpacity>
-        ))}
       </View>
 
       {/* Agent avatar area */}
@@ -202,37 +178,6 @@ const styles = StyleSheet.create({
     color: '#ff6b35',
     fontSize: 14,
     fontWeight: '600',
-  },
-  modelSelector: {
-    flexDirection: 'row',
-    marginTop: 16,
-    gap: 8,
-  },
-  modelChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#333',
-    alignItems: 'center',
-  },
-  modelChipActive: {
-    backgroundColor: '#ff6b35',
-    borderColor: '#ff6b35',
-  },
-  modelChipText: {
-    color: '#999',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  modelChipTextActive: {
-    color: '#fff',
-  },
-  modelCredits: {
-    color: '#666',
-    fontSize: 10,
-    marginTop: 2,
   },
   avatarArea: {
     marginTop: 40,

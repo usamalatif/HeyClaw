@@ -59,9 +59,8 @@ export async function createAgentContainer(userId: string): Promise<AgentProvisi
     Image: AGENT_IMAGE,
     Env: [
       `USER_ID=${userId}`,
-      `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY || ''}`,
       `OPENAI_API_KEY=${process.env.OPENAI_API_KEY || ''}`,
-      `OPENCLAW_MODEL=${process.env.OPENCLAW_MODEL || 'anthropic/claude-sonnet-4-5-20250929'}`,
+      `OPENCLAW_MODEL=${process.env.OPENCLAW_MODEL || 'openai/gpt-4o-mini'}`,
       `OPENCLAW_PORT=18789`,
       `OPENCLAW_GATEWAY_TOKEN=${gatewayToken}`,
     ],

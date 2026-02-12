@@ -1,8 +1,6 @@
 import {create} from 'zustand';
 import type {Session} from '@supabase/supabase-js';
 
-type ModelTier = 'standard' | 'power' | 'best';
-
 interface UserProfile {
   id: string;
   email: string;
@@ -21,12 +19,10 @@ interface AuthState {
   isProvisioned: boolean;
   profileLoading: boolean;
   profile: UserProfile | null;
-  selectedModel: ModelTier;
   setSession: (session: Session | null) => void;
   setProvisioned: (provisioned: boolean) => void;
   setProfileLoading: (loading: boolean) => void;
   setProfile: (profile: UserProfile | null) => void;
-  setSelectedModel: (model: ModelTier) => void;
   deductCredits: (amount: number) => void;
 }
 
@@ -35,13 +31,10 @@ export const useAuthStore = create<AuthState>(set => ({
   isProvisioned: false,
   profileLoading: true,
   profile: null,
-  selectedModel: 'standard',
-
   setSession: session => set({session}),
   setProvisioned: isProvisioned => set({isProvisioned}),
   setProfileLoading: profileLoading => set({profileLoading}),
   setProfile: profile => set({profile}),
-  setSelectedModel: selectedModel => set({selectedModel}),
   deductCredits: amount =>
     set(state => ({
       profile: state.profile

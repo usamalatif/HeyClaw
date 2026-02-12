@@ -107,7 +107,7 @@ interface Message {
   isVoice?: boolean;
 }
 
-const MODEL_CREDITS = {standard: 10, power: 30, best: 100} as const;
+const CREDIT_COST = 10;
 
 export default function ChatScreen() {
   const {messages, setMessages, updateLastMessage, sessionId, setSessionId} =
@@ -120,7 +120,7 @@ export default function ChatScreen() {
   const typingRef = useRef<NodeJS.Timeout | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const prevCountRef = useRef(messages.length);
-  const {selectedModel, deductCredits, profile} = useAuthStore();
+  const {deductCredits, profile} = useAuthStore();
 
   // Clean up typing animation on unmount
   useEffect(() => {
@@ -138,8 +138,7 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
-  const creditsPerMsg = MODEL_CREDITS[selectedModel];
-  const hasCredits = (profile?.creditsRemaining ?? 0) >= creditsPerMsg;
+  const hasCredits = (profile?.creditsRemaining ?? 0) >= CREDIT_COST;
 
   // Load or create chat session on mount
   useEffect(() => {
@@ -206,9 +205,9 @@ export default function ChatScreen() {
     setIsWaiting(true);
 
     try {
-      const res = await api.sendMessage(text, selectedModel);
+      const res = await api.sendMessage(text);
       setIsWaiting(false);
-      deductCredits(creditsPerMsg);
+      deductCredits(CREDIT_COST);
 
       const fullText: string = res.response;
       const assistantMsgId = (Date.now() + 1).toString();

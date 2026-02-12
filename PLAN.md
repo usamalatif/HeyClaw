@@ -289,7 +289,7 @@ Target: first audio plays within ~1.5s of agent starting
 | Plan | Price/mo | Credits/mo | Best for |
 |------|----------|------------|----------|
 | **Free** | $0 | 50 | Try the app (~5 standard msgs) |
-| **Starter** | $24.99 | 1,400 | Light daily use |
+| **Starter** |c.99 | 1,400 | Light daily use |
 | **Pro** | $69.99 | 4,200 | Regular use, power models |
 | **Ultra** | $179.99 | 12,000 | Heavy use, best models |
 

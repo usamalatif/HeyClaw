@@ -13,12 +13,11 @@ const POLL_INTERVAL_MS = 60_000; // Check every 60 seconds in foreground
  * - Adds results to chat as system messages
  */
 export function useAutomationPoller() {
-  const session = useAuthStore(s => s.session);
-  const isProvisioned = useAuthStore(s => s.isProvisioned);
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkForResults = useCallback(async () => {
-    if (!session || !isProvisioned) return;
+    if (!isAuthenticated) return;
 
     try {
       const {newResults, agentName} = await api.checkAutomation();
@@ -43,10 +42,10 @@ export function useAutomationPoller() {
     } catch {
       // Silently ignore polling errors
     }
-  }, [session, isProvisioned]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!session || !isProvisioned) return;
+    if (!isAuthenticated) return;
 
     // Check immediately on mount
     checkForResults();
@@ -72,5 +71,5 @@ export function useAutomationPoller() {
       }
       subscription.remove();
     };
-  }, [session, isProvisioned, checkForResults]);
+  }, [isAuthenticated, checkForResults]);
 }

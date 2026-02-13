@@ -1,6 +1,6 @@
 import {useCallback, useRef} from 'react';
 import {useAuthStore, useVoiceStore, useChatStore} from './store';
-import {supabase} from './supabase';
+import {getAccessToken} from './auth';
 import {
   playBase64Audio,
   prepareAudioChunk,
@@ -16,7 +16,7 @@ import {API_URL} from './config';
 // 3. Receive tokens (instant display) + audio chunks (ElevenLabs TTS)
 // 4. Play audio chunks sequentially with pre-buffering
 export function useVoiceFlow() {
-  const {deductCredits} = useAuthStore();
+  const {updateUsage} = useAuthStore();
   const {
     setRecording,
     setProcessing,
@@ -101,7 +101,10 @@ export function useVoiceFlow() {
             break;
 
           case 'done': {
-            deductCredits(event.creditsUsed);
+            // Update usage display
+            if (event.usage) {
+              updateUsage(event.usage.messagesUsed, event.usage.messagesLimit);
+            }
             setProcessing(false);
             const agentName = useAuthStore.getState().profile?.agentName;
             notifyResponseReady(agentName);
@@ -117,7 +120,7 @@ export function useVoiceFlow() {
         // Skip malformed SSE lines
       }
     },
-    [deductCredits, setLastResponse, setProcessing, processAudioQueue],
+    [updateUsage, setLastResponse, setProcessing, processAudioQueue],
   );
 
   // Process SSE stream from /agent/voice using XMLHttpRequest
@@ -125,11 +128,9 @@ export function useVoiceFlow() {
   const streamAgentResponse = useCallback(
     (transcribedText: string): Promise<void> => {
       return new Promise(async (resolve, reject) => {
-        const {
-          data: {session},
-        } = await supabase.auth.getSession();
+        const token = await getAccessToken();
 
-        if (!session?.access_token) {
+        if (!token) {
           reject(new Error('Not authenticated'));
           return;
         }
@@ -147,7 +148,7 @@ export function useVoiceFlow() {
 
         xhr.open('POST', `${API_URL}/agent/voice`);
         xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
         xhr.onprogress = () => {
           if (cancelledRef.current) return;

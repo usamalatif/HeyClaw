@@ -4,7 +4,7 @@
 const API_ENV: 'local' | 'production' = 'production';
 
 const API_URLS = {
-  local: 'http://192.168.1.25:3000',
+  local: 'http://192.168.1.100:3000',
   production: 'http://93.115.26.164:3000',
 };
 

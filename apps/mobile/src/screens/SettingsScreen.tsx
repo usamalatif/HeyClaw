@@ -8,14 +8,14 @@ import {
   Alert,
 } from 'react-native';
 import {useAuthStore} from '../lib/store';
-import {supabase} from '../lib/supabase';
 import {api} from '../lib/api';
+import PaywallModal from '../components/PaywallModal';
+import {openSubscriptionManagement, restorePurchases} from '../lib/iap';
 
 const PLAN_LABELS: Record<string, string> = {
   free: 'Free',
-  starter: 'Starter — $24.99/mo',
-  pro: 'Pro — $69.99/mo',
-  ultra: 'Ultra — $179.99/mo',
+  pro: 'Pro — $24.99/mo',
+  premium: 'Premium — $69.99/mo',
 };
 
 const VOICES = [
@@ -30,24 +30,21 @@ const VOICES = [
   {id: 'shimmer', label: 'Shimmer'},
 ];
 
-const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
-
 export default function SettingsScreen() {
-  const {profile, setSession, setProfile} = useAuthStore();
+  const {profile, setAuthenticated, setProfile} = useAuthStore();
   const [saving, setSaving] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
-  const currentVoice = profile?.ttsVoice || 'alloy';
-  const currentSpeed = profile?.ttsSpeed ?? 1.0;
+  const currentVoice = profile?.voice || 'alloy';
 
-  const updateSetting = async (field: string, value: any) => {
+  const updateVoice = async (voice: string) => {
     if (saving) return;
     setSaving(true);
     try {
-      const updated = await api.updateMe({[field]: value});
+      await api.updatePersonality({voice});
       setProfile({
         ...profile!,
-        ttsVoice: updated.tts_voice ?? profile!.ttsVoice,
-        ttsSpeed: updated.tts_speed ?? profile!.ttsSpeed,
+        voice,
       });
     } catch (err: any) {
       Alert.alert('Error', err.message);
@@ -63,8 +60,8 @@ export default function SettingsScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          await supabase.auth.signOut();
-          setSession(null);
+          await api.logout();
+          setAuthenticated(false);
           setProfile(null);
         },
       },
@@ -72,7 +69,7 @@ export default function SettingsScreen() {
   };
 
   const handleUpgrade = () => {
-    // TODO: Show IAP upgrade modal
+    setShowPaywall(true);
   };
 
   return (
@@ -93,9 +90,9 @@ export default function SettingsScreen() {
           </Text>
         </View>
         <View style={[styles.row, styles.rowLast]}>
-          <Text style={styles.label}>Credits</Text>
+          <Text style={styles.label}>Messages Today</Text>
           <Text style={styles.valueHighlight}>
-            {profile?.creditsRemaining ?? 0} / {profile?.creditsMonthlyLimit ?? 50}
+            {profile?.dailyMessagesUsed ?? 0} / {profile?.dailyMessagesLimit ?? 50}
           </Text>
         </View>
       </View>
@@ -103,6 +100,12 @@ export default function SettingsScreen() {
       {(profile?.plan === 'free' || !profile?.plan) && (
         <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
           <Text style={styles.upgradeButtonText}>Upgrade Plan</Text>
+        </TouchableOpacity>
+      )}
+
+      {profile?.plan && profile.plan !== 'free' && (
+        <TouchableOpacity style={styles.manageButton} onPress={openSubscriptionManagement}>
+          <Text style={styles.manageButtonText}>Manage Subscription</Text>
         </TouchableOpacity>
       )}
 
@@ -117,7 +120,7 @@ export default function SettingsScreen() {
                 styles.voiceChip,
                 currentVoice === v.id && styles.voiceChipActive,
               ]}
-              onPress={() => updateSetting('tts_voice', v.id)}
+              onPress={() => updateVoice(v.id)}
               disabled={saving}>
               <Text
                 style={[
@@ -131,30 +134,10 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Speed selection */}
-      <Text style={styles.sectionHeader}>SPEED</Text>
-      <View style={styles.card}>
-        <View style={styles.speedRow}>
-          {SPEEDS.map(s => (
-            <TouchableOpacity
-              key={s}
-              style={[
-                styles.speedChip,
-                currentSpeed === s && styles.speedChipActive,
-              ]}
-              onPress={() => updateSetting('tts_speed', s)}
-              disabled={saving}>
-              <Text
-                style={[
-                  styles.speedChipText,
-                  currentSpeed === s && styles.speedChipTextActive,
-                ]}>
-                {s}x
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+      {/* Restore purchases */}
+      <TouchableOpacity style={styles.restoreButton} onPress={() => restorePurchases()}>
+        <Text style={styles.restoreText}>Restore Purchases</Text>
+      </TouchableOpacity>
 
       {/* Sign out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -162,6 +145,8 @@ export default function SettingsScreen() {
       </TouchableOpacity>
 
       <View style={styles.footer} />
+
+      <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} />
     </ScrollView>
   );
 }
@@ -258,33 +243,30 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  speedRow: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-    justifyContent: 'space-between',
-  },
-  speedChip: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#0a0a0a',
-    borderWidth: 1,
-    borderColor: '#333',
+  manageButton: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
-  },
-  speedChipActive: {
-    backgroundColor: '#ff6b35',
+    borderWidth: 1,
     borderColor: '#ff6b35',
   },
-  speedChipText: {
+  manageButtonText: {
+    color: '#ff6b35',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  restoreButton: {
+    marginHorizontal: 16,
+    marginTop: 24,
+    padding: 12,
+    alignItems: 'center',
+  },
+  restoreText: {
     color: '#999',
     fontSize: 14,
     fontWeight: '500',
-  },
-  speedChipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
   },
   signOutButton: {
     marginHorizontal: 16,

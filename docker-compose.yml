@@ -1,4 +1,21 @@
 services:
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/gateway.Dockerfile
+    container_name: heyclaw-gateway
+    restart: unless-stopped
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+    volumes:
+      - openclaw_config:/root/.openclaw
+      - openclaw_workspaces:/root/.openclaw/workspaces
+    ports:
+      - "127.0.0.1:18789:18789"
+    networks:
+      - heyclaw
+
   api:
     build:
       context: .
@@ -10,21 +27,17 @@ services:
     env_file:
       - .env.production
     volumes:
-      # Mount Docker socket so API can create per-user OpenClaw containers
       - /var/run/docker.sock:/var/run/docker.sock
+      - openclaw_config:/openclaw-config
+      - openclaw_workspaces:/openclaw-workspaces
     networks:
       - heyclaw
     depends_on:
-      - agent-image
+      - gateway
 
-  # Build the OpenClaw agent image (used by dockerProvisioner to create per-user containers)
-  agent-image:
-    build:
-      context: infrastructure/fly
-      dockerfile: agent.Dockerfile
-    image: heyclaw-agent:latest
-    entrypoint: ["echo", "Agent image built successfully"]
-    restart: "no"
+volumes:
+  openclaw_config:
+  openclaw_workspaces:
 
 networks:
   heyclaw:

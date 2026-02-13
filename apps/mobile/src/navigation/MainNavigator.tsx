@@ -1,9 +1,10 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {View} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import HomeScreen from '../screens/HomeScreen';
 import ChatScreen from '../screens/ChatScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import {initIAP, endIAP} from '../lib/iap';
 
 const ICON_SIZE = 26;
 
@@ -109,6 +110,13 @@ export type MainTabParamList = {
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export default function MainNavigator() {
+  useEffect(() => {
+    initIAP();
+    return () => {
+      endIAP();
+    };
+  }, []);
+
   return (
     <Tab.Navigator
       screenOptions={{

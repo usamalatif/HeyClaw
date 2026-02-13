@@ -1,16 +1,38 @@
-import {supabase} from './supabase';
 import {API_URL} from './config';
+import {getAccessToken, getTokens, saveTokens, clearTokens} from './auth';
+import {useAuthStore} from './store';
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const {
-    data: {session},
-  } = await supabase.auth.getSession();
+  const token = await getAccessToken();
   return {
     'Content-Type': 'application/json',
-    ...(session?.access_token && {
-      Authorization: `Bearer ${session.access_token}`,
-    }),
+    ...(token && {Authorization: `Bearer ${token}`}),
   };
+}
+
+// Try to refresh the access token using the refresh token
+async function tryRefresh(): Promise<boolean> {
+  const tokens = await getTokens();
+  if (!tokens?.refreshToken) return false;
+
+  try {
+    const res = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({refreshToken: tokens.refreshToken}),
+    });
+
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    await saveTokens({
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function request<T>(
@@ -18,16 +40,32 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_URL}${path}`, {
+  let res = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {...headers, ...options.headers},
   });
 
-  if (!res.ok) {
-    // Auto-sign out on 401 (expired/invalid token)
-    if (res.status === 401) {
-      await supabase.auth.signOut();
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      const newHeaders = await getAuthHeaders();
+      res = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: {...newHeaders, ...options.headers},
+      });
     }
+
+    if (res.status === 401) {
+      // Refresh failed — sign out
+      await clearTokens();
+      useAuthStore.getState().setAuthenticated(false);
+      useAuthStore.getState().setProfile(null);
+      throw new Error('Session expired. Please sign in again.');
+    }
+  }
+
+  if (!res.ok) {
     const error = await res.json().catch(() => ({message: 'Request failed'}));
     throw new Error(error.message || `HTTP ${res.status}`);
   }
@@ -36,6 +74,38 @@ async function request<T>(
 }
 
 export const api = {
+  // Auth
+  signup: async (email: string, password: string, name?: string) => {
+    const res = await fetch(`${API_URL}/auth/signup`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password, name}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Signup failed');
+    return data;
+  },
+
+  login: async (email: string, password: string) => {
+    const res = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Login failed');
+    return data;
+  },
+
+  logout: async () => {
+    try {
+      await request('/auth/logout', {method: 'POST'});
+    } catch {
+      // Logout best-effort — always clear local tokens
+    }
+    await clearTokens();
+  },
+
   // User
   getMe: () => request<any>('/user/me'),
   updateMe: (data: Record<string, any>) =>
@@ -43,7 +113,7 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  getCredits: () => request<any>('/user/credits'),
+  getUsage: () => request<any>('/user/usage'),
 
   // Agent
   sendMessage: (text: string) =>
@@ -51,24 +121,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({text}),
     }),
-  // Voice streaming handled directly in useVoiceFlow via SSE (POST /agent/voice)
   getAgentStatus: () => request<any>('/agent/status'),
   getAgentHealth: () => request<any>('/agent/health'),
-  provisionAgent: () => request<any>('/agent/provision', {method: 'POST'}),
-  wakeAgent: () => request<any>('/agent/wake', {method: 'POST'}),
+  updatePersonality: (data: {displayName?: string; voice?: string}) =>
+    request<any>('/agent/personality', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
 
   // Voice
-  transcribe: (audioFormData: FormData) =>
-    fetch(`${API_URL}/voice/transcribe`, {
+  transcribe: async (audioFormData: FormData) => {
+    const token = await getAccessToken();
+    return fetch(`${API_URL}/voice/transcribe`, {
       method: 'POST',
+      headers: token ? {Authorization: `Bearer ${token}`} : {},
       body: audioFormData,
-    }).then(res => res.json()),
+    }).then(res => res.json());
+  },
 
   // Billing
-  verifyReceipt: (receiptData: string) =>
+  verifyReceipt: (receiptData: string, productId: string) =>
     request<any>('/billing/verify', {
       method: 'POST',
-      body: JSON.stringify({receiptData}),
+      body: JSON.stringify({receiptData, productId}),
     }),
   getBillingStatus: () => request<any>('/billing/status'),
 

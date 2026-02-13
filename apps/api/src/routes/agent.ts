@@ -1,94 +1,31 @@
 import {Hono} from 'hono';
 import {streamSSE} from 'hono/streaming';
 import {authMiddleware} from '../middleware/auth.js';
-import {supabase} from '../lib/supabase.js';
+import {rateLimitMiddleware} from '../middleware/rateLimiter.js';
+import {db} from '../db/pool.js';
 import type {AppEnv} from '../lib/types.js';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
-import {createAgentContainer, startAgentContainer, getAgentStatus, getAgentUrl} from '../services/dockerProvisioner.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
+import {checkLimit, incrementUsage} from '../services/usage.js';
+import {agentExists} from '../services/agentManager.js';
 
-const CREDIT_COST = 10;
-
-// Poll until OpenClaw is actually responding inside the container
-async function waitForAgent(userId: string, maxAttempts = 30): Promise<void> {
-  const agentUrl = getAgentUrl(userId);
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(2000)});
-      if (res.ok) return;
-    } catch {
-      // Not ready yet
-    }
-    await new Promise(r => setTimeout(r, 2000));
+// Look up the user's active assistant's agent_id
+async function getAgentId(userId: string): Promise<string> {
+  const result = await db.query(
+    `SELECT agent_id FROM assistants WHERE user_id = $1 AND status = 'active' LIMIT 1`,
+    [userId],
+  );
+  if (!result.rows[0]) {
+    throw new Error('No active assistant. Create one first.');
   }
-  throw new Error('Agent container failed to respond within 60 seconds');
-}
-
-// Ensure the user's OpenClaw container is provisioned and running.
-// Returns the gateway token needed for API calls.
-async function ensureAgentRunning(userId: string): Promise<string> {
-  const {data: user} = await supabase
-    .from('users')
-    .select('agent_machine_id, agent_gateway_token, agent_status')
-    .eq('id', userId)
-    .single();
-
-  let gatewayToken: string | undefined;
-  let needsHealthCheck = false;
-
-  // Already provisioned — check if container is actually running
-  if (user?.agent_machine_id && user?.agent_gateway_token) {
-    const status = await getAgentStatus(user.agent_machine_id);
-    if (status === 'running') {
-      // Container running — quick ping to verify OpenClaw is responsive
-      gatewayToken = user.agent_gateway_token;
-      const agentUrl = getAgentUrl(userId);
-      try {
-        await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(3000)});
-      } catch {
-        // OpenClaw not responding yet (e.g. after container restart) — wait for it
-        needsHealthCheck = true;
-      }
-    } else if (status === 'stopped') {
-      try {
-        await startAgentContainer(user.agent_machine_id);
-        await supabase.from('users').update({agent_status: 'running'}).eq('id', userId);
-        gatewayToken = user.agent_gateway_token;
-        needsHealthCheck = true; // Just started — need to wait for OpenClaw
-      } catch {
-        // Container gone — fall through to re-provision
-      }
-    }
-  }
-
-  // Provision a new container if needed
-  if (!gatewayToken) {
-    const result = await createAgentContainer(userId);
-    gatewayToken = result.gatewayToken;
-    await supabase
-      .from('users')
-      .update({
-        agent_machine_id: result.containerId,
-        agent_gateway_token: gatewayToken,
-        agent_status: 'running',
-      })
-      .eq('id', userId);
-    needsHealthCheck = true; // Freshly provisioned — need to wait for OpenClaw
-  }
-
-  // Only wait for OpenClaw when the container was just started or provisioned
-  if (needsHealthCheck) {
-    await waitForAgent(userId);
-  }
-
-  return gatewayToken;
+  return result.rows[0].agent_id;
 }
 
 export const agentRoutes = new Hono<AppEnv>();
 
 agentRoutes.use('*', authMiddleware);
 
-agentRoutes.post('/message', async c => {
+agentRoutes.post('/message', rateLimitMiddleware, async c => {
   const userId = c.get('userId');
   const {text} = await c.req.json();
 
@@ -96,49 +33,40 @@ agentRoutes.post('/message', async c => {
     return c.json({message: 'Message text is required'}, 400);
   }
 
-  const {data: user, error: userError} = await supabase
-    .from('users')
-    .select('credits_remaining')
-    .eq('id', userId)
-    .single();
-
-  if (userError || !user) {
-    return c.json({message: 'User not found'}, 404);
+  // Check daily message limit
+  const canSend = await checkLimit(userId, 'text_messages');
+  if (!canSend) {
+    return c.json({message: 'Daily message limit reached. Upgrade your plan.'}, 429);
   }
 
-  if (user.credits_remaining < CREDIT_COST) {
-    return c.json(
-      {message: 'Insufficient credits', creditsNeeded: CREDIT_COST, creditsRemaining: user.credits_remaining},
-      402,
-    );
-  }
+  const agentId = await getAgentId(userId);
 
-  // Auto-provision/start the container if needed
-  const gatewayToken = await ensureAgentRunning(userId);
+  const response = await sendToOpenClaw(agentId, [{role: 'user', content: text}]);
 
-  const response = await sendToOpenClaw(
-    userId,
-    [{role: 'user', content: text}],
-    gatewayToken,
+  // Increment usage
+  await incrementUsage(userId, 'text_messages', 1);
+
+  // Update last_active_at
+  await db.query(
+    `UPDATE assistants SET last_active_at = NOW(), message_count = message_count + 1
+     WHERE agent_id = $1`,
+    [agentId],
   );
 
-  const newCredits = user.credits_remaining - CREDIT_COST;
-  await supabase
-    .from('users')
-    .update({credits_remaining: newCredits})
-    .eq('id', userId);
+  const limits = c.get('limits');
+  const usage = c.get('usage');
 
-  await supabase.from('usage_logs').insert({
-    user_id: userId,
-    type: 'agent_message',
-    credits_used: CREDIT_COST,
+  return c.json({
+    response,
+    usage: {
+      messagesUsed: usage.text_messages + 1,
+      messagesLimit: limits.daily_text_messages,
+    },
   });
-
-  return c.json({response, creditsUsed: CREDIT_COST, creditsRemaining: newCredits});
 });
 
 // Streaming voice endpoint — SSE with text + audio chunks
-agentRoutes.post('/voice', async (c) => {
+agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
   const userId = c.get('userId');
   const {text, voice, nativeTts = false} = await c.req.json();
 
@@ -146,28 +74,21 @@ agentRoutes.post('/voice', async (c) => {
     return c.json({message: 'Message text is required'}, 400);
   }
 
-  const {data: user, error: userError} = await supabase
-    .from('users')
-    .select('credits_remaining, tts_voice')
-    .eq('id', userId)
-    .single();
-
-  if (userError || !user) {
-    return c.json({message: 'User not found'}, 404);
+  // Check daily message limit
+  const canSend = await checkLimit(userId, 'text_messages');
+  if (!canSend) {
+    return c.json({message: 'Daily message limit reached. Upgrade your plan.'}, 429);
   }
 
-  if (user.credits_remaining < CREDIT_COST) {
-    return c.json(
-      {message: 'Insufficient credits', creditsNeeded: CREDIT_COST, creditsRemaining: user.credits_remaining},
-      402,
-    );
-  }
+  const agentId = await getAgentId(userId);
 
-  // Auto-provision/start the container if needed
-  const gatewayToken = await ensureAgentRunning(userId);
-
+  // Get user's TTS voice preference
+  const userResult = await db.query(
+    'SELECT voice FROM assistants WHERE agent_id = $1',
+    [agentId],
+  );
   const VALID_VOICES = ['alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'];
-  const rawVoice = voice || user.tts_voice;
+  const rawVoice = voice || userResult.rows[0]?.voice;
   const ttsVoice = VALID_VOICES.includes(rawVoice) ? rawVoice : 'alloy';
 
   return streamSSE(c, async (stream) => {
@@ -176,7 +97,7 @@ agentRoutes.post('/voice', async (c) => {
       let sentenceIndex = 0;
       let fullText = '';
 
-      // TTS runs as a background pipeline — doesn't block text streaming
+      // TTS runs as a background pipeline
       const ttsQueue: {sentence: string; index: number}[] = [];
       let ttsRunning = false;
       let ttsFinishResolve: (() => void) | null = null;
@@ -188,7 +109,7 @@ agentRoutes.post('/voice', async (c) => {
           const results = await Promise.all(
             batch.map(item =>
               chunkToSpeech(item.sentence, ttsVoice)
-                .then(audio => ({audio, index: item.index}))
+                .then(audio => ({audio, index: item.index})),
             ),
           );
           for (const result of results) {
@@ -249,8 +170,7 @@ agentRoutes.post('/voice', async (c) => {
         });
       };
 
-      // All requests go through OpenClaw
-      const openclawStream = streamFromOpenClaw(userId, [{role: 'user', content: text}], gatewayToken);
+      const openclawStream = streamFromOpenClaw(agentId, [{role: 'user', content: text}]);
       for await (const chunk of openclawStream) {
         buffer += chunk;
         fullText += chunk;
@@ -269,23 +189,26 @@ agentRoutes.post('/voice', async (c) => {
         await waitForTTS();
       }
 
-      const newCredits = user.credits_remaining - CREDIT_COST;
-      await supabase
-        .from('users')
-        .update({credits_remaining: newCredits})
-        .eq('id', userId);
+      // Increment usage
+      await incrementUsage(userId, 'text_messages', 1);
 
-      await supabase.from('usage_logs').insert({
-        user_id: userId,
-        type: 'agent_message',
-        credits_used: CREDIT_COST,
-      });
+      // Update assistant activity
+      await db.query(
+        `UPDATE assistants SET last_active_at = NOW(), message_count = message_count + 1
+         WHERE agent_id = $1`,
+        [agentId],
+      );
+
+      const limits = c.get('limits');
+      const usage = c.get('usage');
 
       await stream.writeSSE({
         data: JSON.stringify({
           type: 'done',
-          creditsUsed: CREDIT_COST,
-          creditsRemaining: newCredits,
+          usage: {
+            messagesUsed: usage.text_messages + 1,
+            messagesLimit: limits.daily_text_messages,
+          },
           fullText,
         }),
         event: 'chunk',
@@ -299,147 +222,74 @@ agentRoutes.post('/voice', async (c) => {
   });
 });
 
-// Provision a new OpenClaw agent instance for the user
-agentRoutes.post('/provision', async c => {
-  const userId = c.get('userId');
-
-  const {data: user, error} = await supabase
-    .from('users')
-    .select('agent_machine_id, agent_status')
-    .eq('id', userId)
-    .single();
-
-  if (error || !user) {
-    return c.json({message: 'User not found'}, 404);
-  }
-
-  if (user.agent_machine_id && user.agent_status === 'running') {
-    return c.json({agentStatus: 'running', machineId: user.agent_machine_id});
-  }
-
-  if (user.agent_machine_id && user.agent_status === 'sleeping') {
-    try {
-      await startAgentContainer(user.agent_machine_id);
-      await supabase
-        .from('users')
-        .update({agent_status: 'running'})
-        .eq('id', userId);
-      return c.json({agentStatus: 'running', machineId: user.agent_machine_id});
-    } catch {
-      // Container gone — re-provision below
-    }
-  }
-
-  await supabase
-    .from('users')
-    .update({agent_status: 'provisioning'})
-    .eq('id', userId);
-
-  try {
-    const {containerId, gatewayToken} = await createAgentContainer(userId);
-
-    await supabase
-      .from('users')
-      .update({
-        agent_machine_id: containerId,
-        agent_gateway_token: gatewayToken,
-        agent_status: 'running',
-      })
-      .eq('id', userId);
-
-    return c.json({agentStatus: 'running', machineId: containerId});
-  } catch (err: any) {
-    console.error('Failed to provision agent:', err.message);
-    await supabase
-      .from('users')
-      .update({agent_status: 'error'})
-      .eq('id', userId);
-
-    return c.json({message: 'Failed to provision agent', error: err.message}, 500);
-  }
-});
-
+// Get agent status
 agentRoutes.get('/status', async c => {
   const userId = c.get('userId');
 
-  const {data, error} = await supabase
-    .from('users')
-    .select('agent_machine_id, agent_status')
-    .eq('id', userId)
-    .single();
+  const result = await db.query(
+    `SELECT a.agent_id, a.display_name, a.status, a.voice, a.message_count, a.last_active_at
+     FROM assistants a WHERE a.user_id = $1 AND a.status != 'deleted'
+     ORDER BY a.created_at LIMIT 1`,
+    [userId],
+  );
 
-  if (error || !data) {
-    return c.json({message: 'User not found'}, 404);
+  if (!result.rows[0]) {
+    return c.json({agentStatus: 'none', message: 'No assistant created'});
   }
 
-  return c.json({agentStatus: data.agent_status, machineId: data.agent_machine_id});
+  const assistant = result.rows[0];
+  const isActive = agentExists(assistant.agent_id);
+
+  return c.json({
+    agentStatus: isActive ? 'running' : assistant.status,
+    agentId: assistant.agent_id,
+    displayName: assistant.display_name,
+    voice: assistant.voice,
+    messageCount: assistant.message_count,
+  });
 });
 
-// Health check — actually pings the OpenClaw gateway inside the container
+// Health check — verify gateway is responding
 agentRoutes.get('/health', async c => {
-  const userId = c.get('userId');
-
-  const {data: user} = await supabase
-    .from('users')
-    .select('agent_machine_id, agent_gateway_token, agent_status')
-    .eq('id', userId)
-    .single();
-
-  if (!user?.agent_machine_id) {
-    return c.json({healthy: false, reason: 'no_agent'});
-  }
-
-  const agentUrl = getAgentUrl(userId);
   try {
-    const res = await fetch(`${agentUrl}/`, {signal: AbortSignal.timeout(5000)});
-    if (res.ok) {
-      return c.json({healthy: true, agentStatus: user.agent_status});
-    }
-    return c.json({healthy: false, reason: 'not_ok', status: res.status});
+    const gatewayUrl = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
+    const res = await fetch(`${gatewayUrl}/`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return c.json({healthy: res.ok});
   } catch {
     return c.json({healthy: false, reason: 'unreachable'});
   }
 });
 
-agentRoutes.post('/wake', async c => {
-  const userId = c.get('userId');
-
-  const {data: user} = await supabase
-    .from('users')
-    .select('agent_machine_id, agent_status')
-    .eq('id', userId)
-    .single();
-
-  if (!user?.agent_machine_id) {
-    return c.json({message: 'No agent provisioned. Call /agent/provision first.'}, 400);
-  }
-
-  if (user.agent_status === 'running') {
-    return c.json({message: 'Agent already running'});
-  }
-
-  try {
-    await startAgentContainer(user.agent_machine_id);
-  } catch {
-    // Container might not exist anymore
-  }
-
-  await supabase
-    .from('users')
-    .update({agent_status: 'running'})
-    .eq('id', userId);
-
-  return c.json({message: 'Agent waking up'});
-});
-
+// Update assistant personality/display name
 agentRoutes.patch('/personality', async c => {
   const userId = c.get('userId');
-  const {personality} = await c.req.json();
+  const {displayName, voice: newVoice} = await c.req.json();
 
-  await supabase
-    .from('users')
-    .update({agent_personality: personality})
-    .eq('id', userId);
+  const updates: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
 
-  return c.json({message: 'Personality updated'});
+  if (displayName !== undefined) {
+    updates.push(`display_name = $${paramIndex++}`);
+    values.push(displayName);
+  }
+  if (newVoice !== undefined) {
+    updates.push(`voice = $${paramIndex++}`);
+    values.push(newVoice);
+  }
+
+  if (updates.length === 0) {
+    return c.json({message: 'No updates provided'}, 400);
+  }
+
+  values.push(userId);
+  await db.query(
+    `UPDATE assistants SET ${updates.join(', ')}, updated_at = NOW()
+     WHERE user_id = $${paramIndex} AND status = 'active'`,
+    values,
+  );
+
+  return c.json({message: 'Updated'});
 });

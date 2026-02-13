@@ -1,6 +1,7 @@
 import {Hono} from 'hono';
 import {authMiddleware} from '../middleware/auth.js';
-import {supabase} from '../lib/supabase.js';
+import {db} from '../db/pool.js';
+import {getTodayUsage} from '../services/usage.js';
 import type {AppEnv} from '../lib/types.js';
 
 export const userRoutes = new Hono<AppEnv>();
@@ -10,55 +11,125 @@ userRoutes.use('*', authMiddleware);
 userRoutes.get('/me', async c => {
   const userId = c.get('userId');
 
-  const {data: user, error} = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  const result = await db.query(
+    `SELECT
+       u.id, u.email, u.name, u.avatar_url, u.created_at,
+       s.plan, s.status AS subscription_status, s.subscription_ends_at,
+       pl.daily_text_messages, pl.daily_voice_input_minutes, pl.daily_tts_characters,
+       a.agent_id, a.display_name AS agent_name, a.voice, a.message_count
+     FROM users u
+     LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
+     LEFT JOIN plan_limits pl ON pl.plan = s.plan
+     LEFT JOIN assistants a ON a.user_id = u.id AND a.status = 'active'
+     WHERE u.id = $1`,
+    [userId],
+  );
 
-  if (error || !user) {
+  if (!result.rows[0]) {
     return c.json({message: 'User not found'}, 404);
   }
 
-  return c.json(user);
+  const row = result.rows[0];
+  const usage = await getTodayUsage(userId);
+
+  return c.json({
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    avatarUrl: row.avatar_url,
+    createdAt: row.created_at,
+    plan: row.plan || 'free',
+    subscriptionStatus: row.subscription_status || 'active',
+    subscriptionEndsAt: row.subscription_ends_at,
+    agent: row.agent_id
+      ? {
+          agentId: row.agent_id,
+          displayName: row.agent_name,
+          voice: row.voice,
+          messageCount: row.message_count,
+        }
+      : null,
+    usage: {
+      textMessages: usage.text_messages,
+      voiceSeconds: usage.voice_seconds,
+      ttsCharacters: usage.tts_characters,
+    },
+    limits: {
+      dailyTextMessages: row.daily_text_messages || 50,
+      dailyVoiceInputMinutes: row.daily_voice_input_minutes || 5,
+      dailyTtsCharacters: row.daily_tts_characters || 5000,
+    },
+  });
 });
 
 userRoutes.patch('/me', async c => {
   const userId = c.get('userId');
   const updates = await c.req.json();
 
-  // Only allow specific fields to be updated
-  const allowed = ['name', 'agent_name', 'tts_voice', 'tts_speed'];
+  const allowed = ['name', 'avatar_url'];
   const filtered = Object.fromEntries(
     Object.entries(updates).filter(([k]) => allowed.includes(k)),
   );
 
-  const {data, error} = await supabase
-    .from('users')
-    .update({...filtered, updated_at: new Date().toISOString()})
-    .eq('id', userId)
-    .select()
-    .single();
-
-  if (error) {
-    return c.json({message: error.message}, 400);
+  if (Object.keys(filtered).length === 0) {
+    return c.json({message: 'No valid fields to update'}, 400);
   }
 
-  return c.json(data);
-});
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
 
-userRoutes.get('/credits', async c => {
-  const userId = c.get('userId');
+  for (const [key, value] of Object.entries(filtered)) {
+    setClauses.push(`${key} = $${paramIndex++}`);
+    values.push(value);
+  }
 
-  const {data, error} = await supabase
-    .from('users')
-    .select('plan, credits_remaining, credits_monthly_limit, credits_reset_at')
-    .eq('id', userId)
-    .single();
+  values.push(userId);
+  const result = await db.query(
+    `UPDATE users SET ${setClauses.join(', ')}, updated_at = NOW()
+     WHERE id = $${paramIndex}
+     RETURNING id, email, name, avatar_url, updated_at`,
+    values,
+  );
 
-  if (error || !data) {
+  if (!result.rows[0]) {
     return c.json({message: 'User not found'}, 404);
   }
 
-  return c.json(data);
+  return c.json(result.rows[0]);
+});
+
+userRoutes.get('/usage', async c => {
+  const userId = c.get('userId');
+
+  const planResult = await db.query(
+    `SELECT pl.*
+     FROM subscriptions s
+     JOIN plan_limits pl ON pl.plan = s.plan
+     WHERE s.user_id = $1 AND s.status = 'active'`,
+    [userId],
+  );
+
+  const limits = planResult.rows[0] || {
+    plan: 'free',
+    daily_text_messages: 50,
+    daily_voice_input_minutes: 5,
+    daily_tts_characters: 5000,
+  };
+
+  const usage = await getTodayUsage(userId);
+
+  return c.json({
+    plan: limits.plan,
+    usage: {
+      textMessages: usage.text_messages,
+      voiceSeconds: usage.voice_seconds,
+      ttsCharacters: usage.tts_characters,
+    },
+    limits: {
+      dailyTextMessages: limits.daily_text_messages,
+      dailyVoiceInputMinutes: limits.daily_voice_input_minutes,
+      dailyTtsCharacters: limits.daily_tts_characters,
+    },
+  });
 });

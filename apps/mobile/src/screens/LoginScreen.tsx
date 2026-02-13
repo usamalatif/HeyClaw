@@ -2,70 +2,67 @@ import React, {useState} from 'react';
 import {
   View,
   Text,
+  Image,
   TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import {supabase} from '../lib/supabase';
+
+const clawIcon = require('../assets/icon.png');
+import {api} from '../lib/api';
+import {saveTokens} from '../lib/auth';
+import {useAuthStore} from '../lib/store';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const setAuthenticated = useAuthStore(s => s.setAuthenticated);
 
   const signInWithPassword = async () => {
     if (!email.trim() || !password.trim()) return;
     setLoading(true);
-    const {error} = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password: password.trim(),
-    });
-    setLoading(false);
-    if (error) Alert.alert('Error', error.message);
+    try {
+      const data = await api.login(email.trim(), password.trim());
+      await saveTokens({
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+      });
+      setAuthenticated(true);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signUp = async () => {
     if (!email.trim() || !password.trim()) return;
-    if (password.trim().length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+    if (password.trim().length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters');
       return;
     }
     setLoading(true);
-    const {data, error} = await supabase.auth.signUp({
-      email: email.trim(),
-      password: password.trim(),
-      options: {emailRedirectTo: undefined},
-    });
-    setLoading(false);
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else if (data.session) {
-      // Auto-signed in (email confirmation disabled)
-    } else {
-      Alert.alert('Account created', 'You can now sign in.');
-      setIsSignUp(false);
+    try {
+      const data = await api.signup(email.trim(), password.trim());
+      await saveTokens({
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+      });
+      setAuthenticated(true);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const signInWithApple = async () => {
-    const {error} = await supabase.auth.signInWithOAuth({
-      provider: 'apple',
-    });
-    if (error) Alert.alert('Error', error.message);
-  };
-
-  const signInWithGoogle = async () => {
-    const {error} = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    });
-    if (error) Alert.alert('Error', error.message);
   };
 
   return (
     <View style={styles.container}>
+      <Image source={clawIcon} style={styles.logoIcon} />
       <Text style={styles.logo}>HeyClaw</Text>
 
       <TextInput
@@ -106,20 +103,6 @@ export default function LoginScreen() {
         </Text>
       </TouchableOpacity>
 
-      <View style={styles.divider}>
-        <View style={styles.dividerLine} />
-        <Text style={styles.dividerText}>or</Text>
-        <View style={styles.dividerLine} />
-      </View>
-
-      <TouchableOpacity style={styles.oauthButton} onPress={signInWithApple}>
-        <Text style={styles.oauthButtonText}>Continue with Apple</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.oauthButton} onPress={signInWithGoogle}>
-        <Text style={styles.oauthButtonText}>Continue with Google</Text>
-      </TouchableOpacity>
-
       <Text style={styles.terms}>
         By continuing, you agree to our Terms & Privacy Policy
       </Text>
@@ -133,6 +116,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
     paddingHorizontal: 24,
     justifyContent: 'center',
+  },
+  logoIcon: {
+    width: 150,
+    height: 150,
+    resizeMode: 'contain',
+    alignSelf: 'center',
+    marginBottom: 12,
   },
   logo: {
     fontSize: 36,
@@ -167,34 +157,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 12,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#333',
-  },
-  dividerText: {
-    color: '#666',
-    marginHorizontal: 16,
-  },
-  oauthButton: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  oauthButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
   },
   terms: {
     color: '#666',

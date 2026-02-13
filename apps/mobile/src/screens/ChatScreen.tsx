@@ -15,6 +15,7 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import {useAuthStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
+import PaywallModal from '../components/PaywallModal';
 
 // Renders text with **bold** markdown support
 function FormattedText({
@@ -171,8 +172,6 @@ interface Message {
   isVoice?: boolean;
 }
 
-const CREDIT_COST = 10;
-
 export default function ChatScreen() {
   const {messages, setMessages, updateLastMessage, sessionId, setSessionId} =
     useChatStore();
@@ -184,7 +183,7 @@ export default function ChatScreen() {
   const typingRef = useRef<NodeJS.Timeout | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const prevCountRef = useRef(messages.length);
-  const {deductCredits, profile} = useAuthStore();
+  const {updateUsage, profile} = useAuthStore();
 
   // Clean up typing animation on unmount
   useEffect(() => {
@@ -223,7 +222,8 @@ export default function ChatScreen() {
     }, [messages.length, scrollToBottom]),
   );
 
-  const hasCredits = (profile?.creditsRemaining ?? 0) >= CREDIT_COST;
+  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Load or create chat session on mount
   useEffect(() => {
@@ -276,7 +276,7 @@ export default function ChatScreen() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || loading || !hasCredits) return;
+    if (!text || loading || !hasMessages) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -292,7 +292,9 @@ export default function ChatScreen() {
     try {
       const res = await api.sendMessage(text);
       setIsWaiting(false);
-      deductCredits(CREDIT_COST);
+      if (res.usage) {
+        updateUsage(res.usage.messagesUsed, res.usage.messagesLimit);
+      }
 
       const fullText: string = res.response;
       const assistantMsgId = (Date.now() + 1).toString();
@@ -342,7 +344,7 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>HeyClaw</Text>
         <Text style={styles.headerCredits}>
-          {profile?.creditsRemaining ?? 0} cr
+          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50}
         </Text>
       </View>
 
@@ -407,6 +409,12 @@ export default function ChatScreen() {
       />
       )}
 
+      {!hasMessages && (
+        <TouchableOpacity style={styles.upgradeBar} onPress={() => setShowPaywall(true)}>
+          <Text style={styles.upgradeBarText}>Daily limit reached. Tap to upgrade.</Text>
+        </TouchableOpacity>
+      )}
+
       <View style={styles.inputBar}>
         <TextInput
           style={styles.textInput}
@@ -418,14 +426,16 @@ export default function ChatScreen() {
           editable={!loading}
         />
         <TouchableOpacity
-          style={[styles.sendButton, !hasCredits && styles.sendButtonDisabled]}
+          style={[styles.sendButton, !hasMessages && styles.sendButtonDisabled]}
           onPress={sendMessage}
-          disabled={loading || !hasCredits}>
+          disabled={loading || !hasMessages}>
           <Text style={styles.sendButtonText}>
             {loading ? '...' : '\u2191'}
           </Text>
         </TouchableOpacity>
       </View>
+
+      <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -500,6 +510,18 @@ const styles = StyleSheet.create({
   voiceIcon: {
     fontSize: 12,
     marginLeft: 4,
+  },
+  upgradeBar: {
+    backgroundColor: '#ff6b3520',
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#ff6b3540',
+  },
+  upgradeBarText: {
+    color: '#ff6b35',
+    fontSize: 14,
+    fontWeight: '600',
   },
   inputBar: {
     flexDirection: 'row',

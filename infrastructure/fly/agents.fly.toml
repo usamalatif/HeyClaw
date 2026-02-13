@@ -1,0 +1,7 @@
+# Fly.io config for HeyClaw Agent image builds
+# Agents are created dynamically via Machines API — this is only for building the image
+app = "heyclaw-agents"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../infrastructure/fly/agent.Dockerfile"

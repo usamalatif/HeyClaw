@@ -12,14 +12,21 @@
     "@anthropic-ai/sdk": "^0.74.0",
     "@heyclaw/shared": "*",
     "@hono/node-server": "^1.8.0",
-    "@supabase/supabase-js": "^2.45.0",
-    "dockerode": "^4.0.9",
+    "bcryptjs": "^3.0.3",
     "hono": "^4.0.0",
-    "openai": "^4.50.0"
+    "ioredis": "^5.9.3",
+    "jose": "^6.1.3",
+    "jsonwebtoken": "^9.0.3",
+    "openai": "^4.50.0",
+    "pg": "^8.18.0",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/dockerode": "^4.0.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.16.0",
+    "@types/uuid": "^10.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.8.0"
   }

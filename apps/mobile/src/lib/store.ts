@@ -1,50 +1,39 @@
 import {create} from 'zustand';
-import type {Session} from '@supabase/supabase-js';
 
 interface UserProfile {
   id: string;
   email: string;
   name: string | null;
-  plan: 'free' | 'starter' | 'pro' | 'ultra';
-  creditsRemaining: number;
-  creditsMonthlyLimit: number;
-  agentStatus: string;
+  plan: 'free' | 'pro' | 'premium';
   agentName: string;
-  ttsVoice: string;
-  ttsSpeed: number;
+  voice: string;
+  dailyMessagesUsed: number;
+  dailyMessagesLimit: number;
+  dailyVoiceSeconds: number;
+  dailyVoiceLimit: number;
 }
 
 interface AuthState {
-  session: Session | null;
-  isProvisioned: boolean;
+  isAuthenticated: boolean;
   profileLoading: boolean;
   profile: UserProfile | null;
-  setSession: (session: Session | null) => void;
-  setProvisioned: (provisioned: boolean) => void;
+  setAuthenticated: (authenticated: boolean) => void;
   setProfileLoading: (loading: boolean) => void;
   setProfile: (profile: UserProfile | null) => void;
-  deductCredits: (amount: number) => void;
+  updateUsage: (messagesUsed: number, messagesLimit: number) => void;
 }
 
 export const useAuthStore = create<AuthState>(set => ({
-  session: null,
-  isProvisioned: false,
+  isAuthenticated: false,
   profileLoading: true,
   profile: null,
-  setSession: session => set({session}),
-  setProvisioned: isProvisioned => set({isProvisioned}),
+  setAuthenticated: isAuthenticated => set({isAuthenticated}),
   setProfileLoading: profileLoading => set({profileLoading}),
   setProfile: profile => set({profile}),
-  deductCredits: amount =>
+  updateUsage: (messagesUsed, messagesLimit) =>
     set(state => ({
       profile: state.profile
-        ? {
-            ...state.profile,
-            creditsRemaining: Math.max(
-              0,
-              state.profile.creditsRemaining - amount,
-            ),
-          }
+        ? {...state.profile, dailyMessagesUsed: messagesUsed, dailyMessagesLimit: messagesLimit}
         : null,
     })),
 }));

@@ -109,6 +109,7 @@ PODS:
     - React-RCTText (= 0.83.1)
     - React-RCTVibration (= 0.83.1)
   - React-callinvoker (0.83.1)
+  - React-Codegen (0.1.0)
   - React-Core (0.83.1):
     - boost
     - DoubleConversion
@@ -2599,6 +2600,13 @@ PODS:
     - SocketRocket
   - RNFS (2.20.0):
     - React-Core
+  - RNIap (12.15.7):
+    - RCT-Folly
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Codegen
+    - React-Core
+    - ReactCommon/turbomodule/core
   - RNKeychain (9.2.3):
     - boost
     - DoubleConversion
@@ -2779,6 +2787,7 @@ DEPENDENCIES:
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../../../node_modules/react-native/ReactCommon`)
   - RNFS (from `../../../node_modules/react-native-fs`)
+  - RNIap (from `../node_modules/react-native-iap`)
   - RNKeychain (from `../../../node_modules/react-native-keychain`)
   - "RNNotifee (from `../../../node_modules/@notifee/react-native`)"
   - RNScreens (from `../../../node_modules/react-native-screens`)
@@ -2788,6 +2797,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - React-Codegen
     - SocketRocket
 
 EXTERNAL SOURCES:
@@ -2954,6 +2964,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native/ReactCommon"
   RNFS:
     :path: "../../../node_modules/react-native-fs"
+  RNIap:
+    :path: "../node_modules/react-native-iap"
   RNKeychain:
     :path: "../../../node_modules/react-native-keychain"
   RNNotifee:
@@ -2983,6 +2995,7 @@ SPEC CHECKSUMS:
   RCTTypeSafety: 27927d0ca04e419ed9467578b3e6297e37210b5c
   React: 4bc1f928568ad4bcfd147260f907b4ea5873a03b
   React-callinvoker: 87f8728235a0dc62e9dc19b3851c829d9347d015
+  React-Codegen: 4b8b4817cea7a54b83851d4c1f91f79aa73de30a
   React-Core: 76bed73b02821e5630e7f2cb2e82432ee964695d
   React-CoreModules: 752dbfdaeb096658aa0adc4a03ba6214815a08df
   React-cxxreact: b6798528aa601c6db66e6adc7e2da2b059c8be74
@@ -3047,6 +3060,7 @@ SPEC CHECKSUMS:
   ReactCodegen: b8e56b780fffe6edd6405be0af4a1e3049a937f7
   ReactCommon: ac934cb340aee91282ecd6f273a26d24d4c55cae
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
+  RNIap: 2211fa23d93d675884591ff224db67b02fa900b7
   RNKeychain: 483402cf2b90647eb0cf569cebbc069d32addea4
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
   RNScreens: afaf526a9c804c3b4503f950cf3e67ed81e29ada

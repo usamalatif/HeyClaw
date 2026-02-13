@@ -23,22 +23,45 @@ if [ ! -f .env.production ]; then
     exit 1
 fi
 
-echo "1/3 Building OpenClaw agent image..."
-docker build -t heyclaw-agent:latest -f infrastructure/fly/agent.Dockerfile infrastructure/fly/
+# Load env for docker-compose variable substitution
+set -a
+source .env.production
+set +a
+
+# Initialize database schema if needed (runs against existing Postgres)
+echo "1/4 Checking database schema..."
+if command -v psql &> /dev/null; then
+    psql "$DATABASE_URL" -c "SELECT 1 FROM users LIMIT 1" &>/dev/null || {
+        echo "    Tables not found — running schema.sql..."
+        psql "$DATABASE_URL" -f infrastructure/server/db/schema.sql
+        echo "    Schema created."
+    }
+else
+    echo "    psql not found — skip schema check. Run schema.sql manually if first deploy."
+fi
 
 echo ""
-echo "2/3 Building HeyClaw API image..."
+echo "2/4 Building OpenClaw gateway..."
+docker compose build gateway
+
+echo ""
+echo "3/4 Building HeyClaw API..."
 docker compose build api
 
 echo ""
-echo "3/3 Starting HeyClaw API..."
-docker compose up -d api
+echo "4/4 Starting gateway + API..."
+docker compose up -d
 
 echo ""
 echo "=== Deployment Complete ==="
 echo ""
+docker compose ps
+echo ""
 echo "API running at: http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'YOUR_SERVER_IP'):3000"
 echo ""
-echo "Check status:  docker compose ps"
-echo "View logs:     docker compose logs -f api"
-echo "Stop:          docker compose down"
+echo "Commands:"
+echo "  Status:      docker compose ps"
+echo "  API logs:    docker compose logs -f api"
+echo "  GW logs:     docker compose logs -f gateway"
+echo "  Stop all:    docker compose down"
+echo "  Redeploy:    docker compose build api && docker compose up -d api"

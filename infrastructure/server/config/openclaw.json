@@ -1,0 +1,41 @@
+{
+  "gateway": {
+    "bind": "127.0.0.1",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "GENERATE_SECURE_TOKEN_64_CHARS"
+    }
+  },
+  "models": {
+    "providers": {
+      "openai-custom": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai",
+        "models": ["gpt-5-nano"]
+      }
+    },
+    "default": "openai-custom/gpt-5-nano"
+  },
+  "agents": {
+    "defaults": {
+      "model": "openai-custom/gpt-5-nano",
+      "sandbox": {
+        "mode": "all",
+        "workspaceAccess": "rw"
+      },
+      "tools": {
+        "deny": ["exec", "process", "browser", "canvas", "cron"]
+      }
+    },
+    "list": []
+  },
+  "bindings": [],
+  "channels": {
+    "webchat": {}
+  },
+  "heartbeat": {
+    "enabled": false
+  }
+}

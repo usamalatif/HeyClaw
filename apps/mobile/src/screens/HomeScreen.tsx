@@ -1,17 +1,20 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Pressable,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
+
+const clawIcon = require('../assets/icon.png');
 import {useAuthStore, useVoiceStore} from '../lib/store';
+import PaywallModal from '../components/PaywallModal';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
 import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} from '../lib/audio';
 import VoiceOrb from '../components/VoiceOrb';
-
-const CREDIT_COST = 10;
 
 // Renders text with **bold** markdown support
 function FormattedText({children, style}: {children: string; style: any}) {
@@ -34,12 +37,13 @@ function FormattedText({children, style}: {children: string; style: any}) {
 
 export default function HomeScreen() {
   const {profile} = useAuthStore();
+  const [showPaywall, setShowPaywall] = useState(false);
   const {isRecording, isProcessing, isPlaying, lastTranscription, lastResponse} =
     useVoiceStore();
   const setRecording = useVoiceStore(s => s.setRecording);
   const {processVoiceInput, cancel} = useVoiceFlow();
 
-  const hasCredits = (profile?.creditsRemaining ?? 0) >= CREDIT_COST;
+  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
 
   const getStatusText = () => {
     if (isRecording) return 'Listening...';
@@ -48,19 +52,12 @@ export default function HomeScreen() {
     return 'What can I help with?';
   };
 
-  const getButtonText = () => {
-    if (isRecording) return 'RELEASE\nTO SEND';
-    if (isProcessing || isPlaying) return 'STOP';
-    return 'HOLD\nTO TALK';
-  };
-
   const setLastTranscription = useVoiceStore(s => s.setLastTranscription);
 
   const handlePressIn = async () => {
     try {
       setLastTranscription(null);
       await startSpeechRecognition((partialText) => {
-        // Show live transcription as user speaks
         setLastTranscription(partialText);
       });
       setRecording(true);
@@ -90,10 +87,10 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Credits display */}
+      {/* Usage display */}
       <View style={styles.header}>
-        <Text style={styles.credits}>
-          {profile?.creditsRemaining ?? 0} credits
+        <Text style={styles.usage}>
+          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50} messages
         </Text>
       </View>
 
@@ -110,9 +107,15 @@ export default function HomeScreen() {
               : 'idle'
           }
           size={100}>
-          <Text style={styles.avatarEmoji}>
-            {isRecording ? '\uD83C\uDFA4' : isProcessing ? '\uD83E\uDD14' : isPlaying ? '\uD83D\uDD0A' : '\uD83E\uDD9E'}
-          </Text>
+          {isRecording ? (
+            <Text style={styles.avatarEmoji}>{'\uD83C\uDFA4'}</Text>
+          ) : isProcessing ? (
+            <Text style={styles.avatarEmoji}>{'\uD83E\uDD14'}</Text>
+          ) : isPlaying ? (
+            <Text style={styles.avatarEmoji}>{'\uD83D\uDD0A'}</Text>
+          ) : (
+            <Image source={clawIcon} style={styles.avatarIcon} />
+          )}
         </VoiceOrb>
         <Text style={styles.agentName}>{profile?.agentName ?? 'HeyClaw'}</Text>
       </View>
@@ -145,9 +148,9 @@ export default function HomeScreen() {
               styles.voiceButton,
               pressed && styles.voiceButtonPressed,
               isRecording && styles.voiceButtonRecording,
-              !hasCredits && styles.voiceButtonDisabled,
+              !hasMessages && styles.voiceButtonDisabled,
             ]}
-            disabled={!hasCredits}
+            disabled={!hasMessages}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}>
             <Text style={styles.voiceButtonText}>
@@ -156,12 +159,16 @@ export default function HomeScreen() {
           </Pressable>
         )}
 
-        {!hasCredits && (
-          <Text style={styles.noCredits}>
-            Not enough credits. Upgrade your plan.
-          </Text>
+        {!hasMessages && (
+          <TouchableOpacity onPress={() => setShowPaywall(true)}>
+            <Text style={styles.noMessages}>
+              Daily limit reached. Tap to upgrade.
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
+
+      <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} />
     </View>
   );
 }
@@ -178,7 +185,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'flex-end',
   },
-  credits: {
+  usage: {
     color: '#ff6b35',
     fontSize: 14,
     fontWeight: '600',
@@ -189,6 +196,11 @@ const styles = StyleSheet.create({
   },
   avatarEmoji: {
     fontSize: 40,
+  },
+  avatarIcon: {
+    width: 90,
+    height: 90,
+    resizeMode: 'contain',
   },
   agentName: {
     color: '#fff',
@@ -226,9 +238,9 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   voiceButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     backgroundColor: '#ff6b35',
     justifyContent: 'center',
     alignItems: 'center',
@@ -245,9 +257,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
   },
   stopButton: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     backgroundColor: '#e63946',
     justifyContent: 'center',
     alignItems: 'center',
@@ -255,11 +267,11 @@ const styles = StyleSheet.create({
   },
   voiceButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: '700',
     textAlign: 'center',
   },
-  noCredits: {
+  noMessages: {
     color: '#e63946',
     fontSize: 13,
     marginTop: 16,

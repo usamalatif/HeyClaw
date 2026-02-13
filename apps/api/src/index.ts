@@ -2,6 +2,8 @@ import {Hono} from 'hono';
 import {cors} from 'hono/cors';
 import {logger} from 'hono/logger';
 import {serve} from '@hono/node-server';
+import {db} from './db/pool.js';
+import {redis} from './db/redis.js';
 import {authRoutes} from './routes/auth.js';
 import {userRoutes} from './routes/user.js';
 import {voiceRoutes} from './routes/voice.js';
@@ -31,6 +33,19 @@ app.route('/automation', automationRoutes);
 const port = Number(process.env.PORT) || 3000;
 console.log(`HeyClaw API running on port ${port}`);
 
-serve({fetch: app.fetch, port});
+const server = serve({fetch: app.fetch, port});
+
+// Graceful shutdown
+async function shutdown(signal: string) {
+  console.log(`\n${signal} received — shutting down gracefully...`);
+  server.close();
+  await redis.quit();
+  await db.pool.end();
+  console.log('Cleanup complete. Exiting.');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;

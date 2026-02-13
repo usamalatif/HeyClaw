@@ -1,13 +1,22 @@
 import {Hono} from 'hono';
 import {authMiddleware} from '../middleware/auth.js';
+import {rateLimitMiddleware} from '../middleware/rateLimiter.js';
 import {transcribeAudio} from '../services/whisper.js';
+import {checkLimit, incrementUsage} from '../services/usage.js';
 import type {AppEnv} from '../lib/types.js';
 
 export const voiceRoutes = new Hono<AppEnv>();
 
 voiceRoutes.use('*', authMiddleware);
 
-voiceRoutes.post('/transcribe', async c => {
+voiceRoutes.post('/transcribe', rateLimitMiddleware, async c => {
+  const userId = c.get('userId');
+
+  const canSend = await checkLimit(userId, 'voice_seconds');
+  if (!canSend) {
+    return c.json({message: 'Daily voice limit reached. Upgrade your plan.'}, 429);
+  }
+
   const formData = await c.req.formData();
   const audioFile = formData.get('audio');
 
@@ -16,6 +25,10 @@ voiceRoutes.post('/transcribe', async c => {
   }
 
   const transcription = await transcribeAudio(audioFile);
+
+  // Estimate ~3 seconds per transcription call (rough average)
+  await incrementUsage(userId, 'voice_seconds', 3);
+
   return c.json({text: transcription});
 });
 

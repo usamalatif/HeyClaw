@@ -28,6 +28,12 @@ COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
+# Agent templates (SOUL.md, AGENTS.md) for new user onboarding
+COPY infrastructure/server/templates/ ./templates/
+
+# Docker CLI for gateway restart
+RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 3000
 
 CMD ["node", "dist/index.js"]

@@ -2,11 +2,14 @@ import React, {useState, useRef} from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Dimensions,
   FlatList,
   TouchableOpacity,
 } from 'react-native';
+
+const clawIcon = require('../assets/icon.png');
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {AuthStackParamList} from '../navigation/AuthNavigator';
 
@@ -61,6 +64,7 @@ export default function OnboardingScreen({navigation}: Props) {
         keyExtractor={(_, i) => String(i)}
         renderItem={({item}) => (
           <View style={styles.page}>
+            <Image source={clawIcon} style={styles.pageIcon} />
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.description}>{item.description}</Text>
           </View>
@@ -109,6 +113,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
+  },
+  pageIcon: {
+    width: 170,
+    height: 170,
+    resizeMode: 'contain',
+    marginBottom: 24,
   },
   title: {
     fontSize: 28,

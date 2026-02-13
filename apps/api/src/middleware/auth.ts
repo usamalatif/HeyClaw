@@ -1,10 +1,13 @@
 import {createMiddleware} from 'hono/factory';
-import {createClient} from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import {redis} from '../db/redis.js';
 import type {AppEnv} from '../lib/types.js';
-import {supabase as adminSupabase} from '../lib/supabase.js';
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+interface JwtPayload {
+  sub: string;
+  email: string;
+  jti: string;
+}
 
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const authHeader = c.req.header('Authorization');
@@ -13,38 +16,23 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   }
 
   const token = authHeader.slice(7);
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {headers: {Authorization: `Bearer ${token}`}},
-  });
 
-  const {
-    data: {user},
-    error,
-  } = await supabase.auth.getUser();
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
 
-  if (error || !user) {
+    // Check JWT blacklist (for logout)
+    const blacklisted = await redis.get(`blacklist:jwt:${decoded.jti}`);
+    if (blacklisted) {
+      return c.json({message: 'Token revoked'}, 401);
+    }
+
+    c.set('userId', decoded.sub);
+    c.set('userEmail', decoded.email);
+    await next();
+  } catch (err: any) {
+    if (err.name === 'TokenExpiredError') {
+      return c.json({message: 'Token expired'}, 401);
+    }
     return c.json({message: 'Invalid token'}, 401);
   }
-
-  // Ensure a row exists in the public users table (auto-create on first login)
-  const {data: existing} = await adminSupabase
-    .from('users')
-    .select('id')
-    .eq('id', user.id)
-    .single();
-
-  if (!existing) {
-    await adminSupabase.from('users').insert({
-      id: user.id,
-      email: user.email,
-      agent_status: 'pending',
-      plan: 'free',
-      credits_remaining: 1000,
-      credits_monthly_limit: 1000,
-    });
-  }
-
-  c.set('userId', user.id);
-  c.set('userEmail', user.email ?? '');
-  await next();
 });

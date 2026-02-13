@@ -5,11 +5,9 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {useAuthStore} from '../lib/store';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
-import ProvisioningScreen from '../screens/ProvisioningScreen';
 
 export type RootStackParamList = {
   Auth: undefined;
-  Provisioning: undefined;
   Main: undefined;
 };
 
@@ -24,10 +22,10 @@ function LoadingScreen() {
 }
 
 export default function RootNavigator() {
-  const {session, isProvisioned, profileLoading} = useAuthStore();
+  const {isAuthenticated, profileLoading} = useAuthStore();
 
   // Wait for profile to load before deciding which screen to show
-  if (session && profileLoading) {
+  if (isAuthenticated && profileLoading) {
     return (
       <NavigationContainer>
         <LoadingScreen />
@@ -38,10 +36,8 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{headerShown: false}}>
-        {!session ? (
+        {!isAuthenticated ? (
           <Stack.Screen name="Auth" component={AuthNavigator} />
-        ) : !isProvisioned ? (
-          <Stack.Screen name="Provisioning" component={ProvisioningScreen} />
         ) : (
           <Stack.Screen name="Main" component={MainNavigator} />
         )}

@@ -263,6 +263,7 @@
 				DEVELOPMENT_TEAM = ZP64PRYCFR;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = HeyClawMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = heyClaw;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -291,6 +292,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ZP64PRYCFR;
 				INFOPLIST_FILE = HeyClawMobile/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = heyClaw;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

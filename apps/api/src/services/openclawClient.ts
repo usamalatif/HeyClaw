@@ -1,6 +1,8 @@
-// Client for communicating with per-user OpenClaw instances
-// Uses OpenClaw's OpenAI-compatible API endpoint: POST /v1/chat/completions
-import {getAgentUrl} from './dockerProvisioner.js';
+// Client for communicating with the single shared OpenClaw gateway
+// Routes to specific agents via the webchat channel peer matching
+
+const GATEWAY_URL = () => process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
+const GATEWAY_TOKEN = () => process.env.OPENCLAW_GATEWAY_TOKEN || '';
 
 interface OpenClawMessage {
   role: 'user' | 'assistant' | 'system';
@@ -16,26 +18,29 @@ interface OpenClawResponse {
   }>;
 }
 
-// Send a message to a user's OpenClaw instance and get a response
-export async function sendToOpenClaw(
-  userId: string,
-  messages: OpenClawMessage[],
-  gatewayToken?: string,
-): Promise<string> {
-  const baseUrl = getAgentUrl(userId);
-
-  const headers: Record<string, string> = {'Content-Type': 'application/json'};
-  if (gatewayToken) {
-    headers['Authorization'] = `Bearer ${gatewayToken}`;
+function getHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = GATEWAY_TOKEN();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
+  return headers;
+}
 
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+// Send a message to a specific agent on the shared gateway
+export async function sendToOpenClaw(
+  agentId: string,
+  messages: OpenClawMessage[],
+): Promise<string> {
+  const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
     method: 'POST',
-    headers,
+    headers: getHeaders(),
     body: JSON.stringify({
       messages,
       model: 'openclaw',
-      user: userId, // Stable session — OpenClaw remembers conversation history
+      agent: agentId,
     }),
   });
 
@@ -48,27 +53,19 @@ export async function sendToOpenClaw(
   return data.choices[0]?.message?.content || 'No response from agent.';
 }
 
-// Stream a response from the user's OpenClaw instance
+// Stream a response from a specific agent on the shared gateway
 export async function* streamFromOpenClaw(
-  userId: string,
+  agentId: string,
   messages: OpenClawMessage[],
-  gatewayToken?: string,
 ): AsyncGenerator<string> {
-  const baseUrl = getAgentUrl(userId);
-
-  const headers: Record<string, string> = {'Content-Type': 'application/json'};
-  if (gatewayToken) {
-    headers['Authorization'] = `Bearer ${gatewayToken}`;
-  }
-
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+  const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
     method: 'POST',
-    headers,
+    headers: getHeaders(),
     body: JSON.stringify({
       messages,
       model: 'openclaw',
       stream: true,
-      user: userId, // Stable session — OpenClaw remembers conversation history
+      agent: agentId,
     }),
   });
 

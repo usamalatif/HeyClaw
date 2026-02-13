@@ -22,11 +22,9 @@ if [ ! -f "$CONFIG_PATH" ]; then
           { "id": "gpt-5-nano-2025-08-07", "name": "GPT-5 Nano (dated)" }
         ]
       }
-    },
-    "default": "openai-custom/gpt-5-nano"
+    }
   },
   "gateway": {
-    "bind": "0.0.0.0",
     "port": 18789,
     "http": {
       "endpoints": {
@@ -36,17 +34,15 @@ if [ ! -f "$CONFIG_PATH" ]; then
   },
   "agents": {
     "defaults": {
-      "model": "openai-custom/gpt-5-nano",
-      "sandbox": { "mode": "all", "workspaceAccess": "rw" },
-      "tools": { "deny": ["exec", "process", "browser", "canvas"] }
+      "model": { "id": "openai-custom/gpt-5-nano" },
+      "sandbox": { "mode": "all", "workspaceAccess": "rw" }
     },
     "list": []
   },
   "bindings": [],
   "channels": { "webchat": {} },
   "cron": { "enabled": true, "maxConcurrentRuns": 1 },
-  "hooks": { "enabled": true },
-  "heartbeat": { "enabled": false }
+  "hooks": { "enabled": true }
 }
 EOF
 fi

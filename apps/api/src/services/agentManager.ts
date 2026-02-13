@@ -14,7 +14,7 @@ interface OpenClawConfig {
   models: any;
   agents: {
     defaults: any;
-    list: Array<{id: string; name: string; workspace: string; model: string}>;
+    list: Array<{id: string; name: string; workspace: string; model: {id: string}}>;
   };
   bindings: Array<{agentId: string; match: any}>;
   channels: any;
@@ -91,7 +91,7 @@ export async function createAgent(
     id: agentId,
     name: agentId,
     workspace: workspacePath,
-    model: model || 'openai-custom/gpt-5-nano',
+    model: {id: model || 'openai-custom/gpt-5-nano'},
   });
 
   config.bindings.push({
@@ -155,7 +155,7 @@ export async function resumeAgent(agentId: string, model?: string): Promise<void
     id: agentId,
     name: agentId,
     workspace: workspacePath,
-    model: model || 'openai-custom/gpt-5-nano',
+    model: {id: model || 'openai-custom/gpt-5-nano'},
   });
 
   config.bindings.push({
@@ -176,7 +176,7 @@ export function getAgentCount(): number {
   return getConfig().agents.list.length;
 }
 
-export function listAgents(): Array<{id: string; name: string; model: string}> {
+export function listAgents(): Array<{id: string; name: string; model: {id: string}}> {
   return getConfig().agents.list.map(a => ({
     id: a.id,
     name: a.name,

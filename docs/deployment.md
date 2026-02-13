@@ -235,7 +235,7 @@ docker compose ps
 curl http://localhost:3000/health
 
 # Check gateway is reachable from API
-docker exec heyclaw-api wget -qO- http://gateway:18789/ || echo "Gateway starting up..."
+docker exec heyclaw-api node -e "fetch('http://gateway:18789/').then(r => r.text()).then(console.log).catch(e => console.error('Gateway not ready:', e.message))"
 
 # Check API can reach Postgres
 docker exec heyclaw-api node -e "

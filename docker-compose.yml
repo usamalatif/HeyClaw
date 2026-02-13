@@ -7,6 +7,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    environment:
+      # Override API-specific paths that don't exist in the gateway container
+      OPENCLAW_CONFIG_PATH: /root/.openclaw/openclaw.json
+      WORKSPACES_DIR: /root/.openclaw/workspaces
+      TEMPLATES_DIR: ""
+      GATEWAY_CONTAINER_NAME: ""
+      DATABASE_URL: ""
+      REDIS_URL: ""
     volumes:
       - openclaw_config:/root/.openclaw
       - openclaw_workspaces:/root/.openclaw/workspaces

@@ -7,6 +7,7 @@ services:
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - openclaw_config:/root/.openclaw
       - openclaw_workspaces:/root/.openclaw/workspaces
@@ -25,6 +26,8 @@ services:
       - "3000:3000"
     env_file:
       - .env.production
+    environment:
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - openclaw_config:/openclaw-config

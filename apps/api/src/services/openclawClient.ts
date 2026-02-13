@@ -1,23 +1,10 @@
 // Client for communicating with the single shared OpenClaw gateway
 // Routes to specific agents via x-openclaw-agent-id header
 
-import fs from 'fs';
-
 const GATEWAY_URL = () => process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
-const CONFIG_PATH = () => process.env.OPENCLAW_CONFIG_PATH || '/openclaw-config/openclaw.json';
-
-let cachedToken = '';
 
 function getGatewayToken(): string {
-  if (cachedToken) return cachedToken;
-  try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_PATH(), 'utf-8'));
-    cachedToken = config.gateway?.auth?.token || '';
-    return cachedToken;
-  } catch {
-    console.warn('[OpenClawClient] Could not read gateway token from config');
-    return '';
-  }
+  return process.env.OPENCLAW_GATEWAY_TOKEN || '';
 }
 
 interface OpenClawMessage {

@@ -5,8 +5,8 @@ CONFIG_PATH="/root/.openclaw/openclaw.json"
 
 # Only generate initial config if none exists (preserves agent list across restarts)
 if [ ! -f "$CONFIG_PATH" ]; then
-  # Auto-generate a gateway auth token
-  GW_TOKEN=$(node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")
+  # Use OPENCLAW_GATEWAY_TOKEN from env (set in docker-compose.yml)
+  GW_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-default-dev-token}"
   echo "No config found — generating initial openclaw.json"
 
   node -e "
@@ -58,7 +58,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
     };
     require('fs').writeFileSync('$CONFIG_PATH', JSON.stringify(config, null, 2));
   "
-  echo "Config generated with auto-generated token"
+  echo "Config generated with token from OPENCLAW_GATEWAY_TOKEN env"
 fi
 
 echo "Starting OpenClaw shared gateway..."

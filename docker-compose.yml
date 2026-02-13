@@ -7,7 +7,6 @@ services:
     restart: unless-stopped
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
     volumes:
       - openclaw_config:/root/.openclaw
       - openclaw_workspaces:/root/.openclaw/workspaces

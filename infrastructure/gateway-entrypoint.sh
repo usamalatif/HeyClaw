@@ -28,10 +28,6 @@ if [ ! -f "$CONFIG_PATH" ]; then
   "gateway": {
     "bind": "0.0.0.0",
     "port": 18789,
-    "auth": {
-      "mode": "token",
-      "token": "${OPENCLAW_GATEWAY_TOKEN}"
-    },
     "http": {
       "endpoints": {
         "chatCompletions": { "enabled": true }
@@ -49,7 +45,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
   "bindings": [],
   "channels": { "webchat": {} },
   "cron": { "enabled": true, "maxConcurrentRuns": 1 },
-  "hooks": { "enabled": true, "token": "${OPENCLAW_GATEWAY_TOKEN}" },
+  "hooks": { "enabled": true },
   "heartbeat": { "enabled": false }
 }
 EOF

@@ -4,19 +4,18 @@
 import fs from 'fs';
 
 const GATEWAY_URL = () => process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789';
-const CONFIG_DIR = () => process.env.OPENCLAW_CONFIG_PATH
-  ? process.env.OPENCLAW_CONFIG_PATH.replace(/\/[^/]+$/, '')
-  : '/openclaw-config';
+const CONFIG_PATH = () => process.env.OPENCLAW_CONFIG_PATH || '/openclaw-config/openclaw.json';
 
 let cachedToken = '';
 
 function getGatewayToken(): string {
   if (cachedToken) return cachedToken;
   try {
-    cachedToken = fs.readFileSync(`${CONFIG_DIR()}/gateway-token`, 'utf-8').trim();
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH(), 'utf-8'));
+    cachedToken = config.gateway?.auth?.token || '';
     return cachedToken;
   } catch {
-    console.warn('[OpenClawClient] Could not read gateway-token file');
+    console.warn('[OpenClawClient] Could not read gateway token from config');
     return '';
   }
 }

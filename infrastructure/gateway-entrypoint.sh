@@ -48,7 +48,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
       },
       bindings: [],
       cron: { enabled: true, maxConcurrentRuns: 1 },
-      hooks: { enabled: true }
+      hooks: { enabled: false }
     };
     require('fs').writeFileSync('$CONFIG_PATH', JSON.stringify(config, null, 2));
   "

@@ -117,7 +117,7 @@ export async function createAgent(
   await reloadGateway();
 
   console.log(`[AgentManager] Agent created: ${agentId}`);
-  return {agentId, workspacePath};
+  return {agentId, workspacePath: localWorkspace};
 }
 
 export async function removeAgent(agentId: string): Promise<void> {

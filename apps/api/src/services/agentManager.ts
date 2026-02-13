@@ -95,7 +95,7 @@ export async function createAgent(
   config.agents.list.push({
     id: agentId,
     name: agentId,
-    model: 'openai-custom/gpt-5-nano',
+    model: {primary: 'openai-custom/gpt-5-nano', fallbacks: []},
     workspace: workspacePath,
   });
 
@@ -159,7 +159,7 @@ export async function resumeAgent(agentId: string): Promise<void> {
   config.agents.list.push({
     id: agentId,
     name: agentId,
-    model: 'openai-custom/gpt-5-nano',
+    model: {primary: 'openai-custom/gpt-5-nano', fallbacks: []},
     workspace: workspacePath,
   });
 

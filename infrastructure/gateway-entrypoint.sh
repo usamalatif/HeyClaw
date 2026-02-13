@@ -42,7 +42,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
       },
       agents: {
         defaults: {
-          model: 'openai-custom/gpt-5-nano',
+          model: { primary: 'openai-custom/gpt-5-nano', fallbacks: [] },
           sandbox: { mode: 'all', workspaceAccess: 'rw' }
         },
         list: []

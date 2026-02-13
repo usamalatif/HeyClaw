@@ -1,5 +1,5 @@
 // Client for communicating with the single shared OpenClaw gateway
-// Routes to specific agents via the webchat channel peer matching
+// Routes to specific agents via x-openclaw-agent-id header
 
 import fs from 'fs';
 
@@ -34,9 +34,10 @@ interface OpenClawResponse {
   }>;
 }
 
-function getHeaders(): Record<string, string> {
+function getHeaders(agentId: string): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'x-openclaw-agent-id': agentId,
   };
   const token = getGatewayToken();
   if (token) {
@@ -52,11 +53,10 @@ export async function sendToOpenClaw(
 ): Promise<string> {
   const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders(agentId),
     body: JSON.stringify({
       messages,
       model: 'openclaw',
-      agent: agentId,
     }),
   });
 
@@ -76,12 +76,11 @@ export async function* streamFromOpenClaw(
 ): AsyncGenerator<string> {
   const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders(agentId),
     body: JSON.stringify({
       messages,
       model: 'openclaw',
       stream: true,
-      agent: agentId,
     }),
   });
 

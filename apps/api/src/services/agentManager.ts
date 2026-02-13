@@ -3,7 +3,10 @@ import path from 'path';
 import {exec} from 'child_process';
 
 const OPENCLAW_CONFIG = process.env.OPENCLAW_CONFIG_PATH || '/home/appuser/.openclaw/openclaw.json';
-const WORKSPACES_DIR = path.join(path.dirname(OPENCLAW_CONFIG), 'workspaces');
+// Local path (API container mount) for writing workspace files
+const WORKSPACES_DIR = process.env.WORKSPACES_DIR || path.join(path.dirname(OPENCLAW_CONFIG), 'workspaces');
+// Gateway path — what gets stored in openclaw.json (as seen by gateway container)
+const GATEWAY_WORKSPACES_DIR = process.env.GATEWAY_WORKSPACES_DIR || '/root/.openclaw/workspaces';
 const TEMPLATES_DIR = process.env.TEMPLATES_DIR || path.join(process.cwd(), 'templates');
 
 let reloadTimer: NodeJS.Timeout | null = null;
@@ -70,33 +73,36 @@ export async function createAgent(
     throw new Error(`Agent ${agentId} already exists`);
   }
 
-  // Create workspace from templates
-  const workspacePath = path.join(WORKSPACES_DIR, agentId);
-  fs.mkdirSync(workspacePath, {recursive: true});
+  // Create workspace from templates (local API path)
+  const localWorkspace = path.join(WORKSPACES_DIR, agentId);
+  fs.mkdirSync(localWorkspace, {recursive: true});
 
   const soulTemplate = path.join(TEMPLATES_DIR, 'SOUL.md');
   const agentsTemplate = path.join(TEMPLATES_DIR, 'AGENTS.md');
 
   if (fs.existsSync(soulTemplate)) {
-    fs.copyFileSync(soulTemplate, path.join(workspacePath, 'SOUL.md'));
+    fs.copyFileSync(soulTemplate, path.join(localWorkspace, 'SOUL.md'));
   } else {
-    fs.writeFileSync(path.join(workspacePath, 'SOUL.md'), '# Your AI Assistant\n');
+    fs.writeFileSync(path.join(localWorkspace, 'SOUL.md'), '# Your AI Assistant\n');
   }
 
   if (fs.existsSync(agentsTemplate)) {
-    fs.copyFileSync(agentsTemplate, path.join(workspacePath, 'AGENTS.md'));
+    fs.copyFileSync(agentsTemplate, path.join(localWorkspace, 'AGENTS.md'));
   } else {
-    fs.writeFileSync(path.join(workspacePath, 'AGENTS.md'), '# Personal AI Assistant\n');
+    fs.writeFileSync(path.join(localWorkspace, 'AGENTS.md'), '# Personal AI Assistant\n');
   }
 
-  fs.writeFileSync(path.join(workspacePath, 'MEMORY.md'), '# Memory\n');
-  fs.writeFileSync(path.join(workspacePath, 'USER.md'), '# User Preferences\n');
+  fs.writeFileSync(path.join(localWorkspace, 'MEMORY.md'), '# Memory\n');
+  fs.writeFileSync(path.join(localWorkspace, 'USER.md'), '# User Preferences\n');
+
+  // Store gateway's path in config (as seen by gateway container)
+  const gatewayWorkspace = path.join(GATEWAY_WORKSPACES_DIR, agentId);
 
   config.agents.list.push({
     id: agentId,
     name: agentId,
     model: {primary: 'openai-custom/gpt-5-nano', fallbacks: []},
-    workspace: workspacePath,
+    workspace: gatewayWorkspace,
   });
 
   config.bindings.push({
@@ -148,19 +154,21 @@ export async function pauseAgent(agentId: string): Promise<void> {
 }
 
 export async function resumeAgent(agentId: string): Promise<void> {
-  const workspacePath = path.join(WORKSPACES_DIR, agentId);
-  if (!fs.existsSync(workspacePath)) {
+  const localWorkspace = path.join(WORKSPACES_DIR, agentId);
+  if (!fs.existsSync(localWorkspace)) {
     throw new Error(`Agent workspace not found: ${agentId}`);
   }
 
   const config = getConfig();
   if (config.agents.list.some(a => a.id === agentId)) return;
 
+  const gatewayWorkspace = path.join(GATEWAY_WORKSPACES_DIR, agentId);
+
   config.agents.list.push({
     id: agentId,
     name: agentId,
     model: {primary: 'openai-custom/gpt-5-nano', fallbacks: []},
-    workspace: workspacePath,
+    workspace: gatewayWorkspace,
   });
 
   config.bindings.push({

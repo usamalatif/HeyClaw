@@ -38,6 +38,11 @@ if [ ! -f "$CONFIG_PATH" ]; then
         tailscale: {
           mode: 'off',
           resetOnExit: false
+        },
+        http: {
+          endpoints: {
+            chatCompletions: { enabled: true }
+          }
         }
       },
       agents: {

@@ -92,10 +92,10 @@ export async function createAgent(
   fs.writeFileSync(path.join(workspacePath, 'MEMORY.md'), '# Memory\n');
   fs.writeFileSync(path.join(workspacePath, 'USER.md'), '# User Preferences\n');
 
-  // Add to config — no model field, inherits from providers default
   config.agents.list.push({
     id: agentId,
     name: agentId,
+    model: 'openai-custom/gpt-5-nano',
     workspace: workspacePath,
   });
 
@@ -159,6 +159,7 @@ export async function resumeAgent(agentId: string): Promise<void> {
   config.agents.list.push({
     id: agentId,
     name: agentId,
+    model: 'openai-custom/gpt-5-nano',
     workspace: workspacePath,
   });
 

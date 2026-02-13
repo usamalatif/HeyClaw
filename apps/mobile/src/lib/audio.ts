@@ -183,17 +183,16 @@ export function getRecordingUri(filePath: string): string {
 export async function speakNative(text: string): Promise<void> {
   await initTts();
   return new Promise((resolve) => {
-    let sub1: {remove: () => void} | null = null;
-    let sub2: {remove: () => void} | null = null;
+    let finished = false;
 
     const onFinish = () => {
-      sub1?.remove();
-      sub2?.remove();
+      if (finished) return;
+      finished = true;
       resolve();
     };
 
-    sub1 = Tts.addEventListener('tts-finish', onFinish);
-    sub2 = Tts.addEventListener('tts-cancel', onFinish);
+    Tts.addEventListener('tts-finish', onFinish);
+    Tts.addEventListener('tts-cancel', onFinish);
     Tts.speak(text);
   });
 }

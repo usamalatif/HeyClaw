@@ -180,7 +180,7 @@ export default function ChatScreen() {
   const [initialLoading, setInitialLoading] = useState(!sessionId);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const typingRef = useRef<NodeJS.Timeout | null>(null);
+  const typingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const prevCountRef = useRef(messages.length);
   const {updateUsage, profile} = useAuthStore();

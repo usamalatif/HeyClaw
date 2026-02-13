@@ -38,7 +38,7 @@ export default function PaywallModal({visible, onClose}: PaywallModalProps) {
 
   const getPrice = (sku: string) => {
     const product = products.find(p => p.productId === sku);
-    return product?.localizedPrice ?? null;
+    return (product as any)?.localizedPrice ?? null;
   };
 
   const handlePurchase = (sku: string) => {

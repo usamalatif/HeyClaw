@@ -6,357 +6,427 @@ Step-by-step deployment to your bare-metal server (93.115.26.164).
 
 ---
 
-## Step 1: Get the code on the server
+## Architecture Overview
 
-From your Mac:
+```
+Internet
+   |
+   v :3000
++--------------+     +------------------+
+|  heyclaw-api |---->| heyclaw-gateway  |
+|  (Hono)      | HTTP|  (OpenClaw)      |
+|              |:18789                   |
+| - Auth (JWT) |     | - agent-user1    |
+| - Rate limit |     | - agent-user2    |
+| - TTS        |     | - agent-user3    |
++------+-------+     +------------------+
+       |                  ^
+       |                  | reads config +
+       |                  | workspaces
+       v                  |
++--------------+   +-------------+
+| PostgreSQL   |   | Docker      |
+| (existing)   |   | Volumes     |
++--------------+   |             |
+| Redis        |   | - config    |
+| (existing)   |   | - workspaces|
++--------------+   +-------------+
+
+All on Docker network: "heyclaw"
+```
+
+**Two Docker containers:**
+- `heyclaw-gateway` — OpenClaw AI agent framework (WebSocket + HTTP API on port 18789)
+- `heyclaw-api` — Hono API server (auth, billing, agent management, TTS on port 3000)
+
+**Shared Docker volumes (mounted at different paths per container):**
+
+| Volume | Gateway Container | API Container |
+|--------|-------------------|---------------|
+| `openclaw_config` | `/root/.openclaw` | `/openclaw-config` |
+| `openclaw_workspaces` | `/root/.openclaw/workspaces` | `/openclaw-workspaces` |
+
+---
+
+## Step 1: Get the code on the server
 
 ```bash
 # Option A: Git clone
 ssh root@93.115.26.164
-cd /opt
+cd /root
 git clone <your-repo-url> heyclaw
 cd heyclaw
 
-# Option B: rsync from local
+# Option B: rsync from local Mac
 rsync -avz --exclude node_modules --exclude .git \
   /Users/usamalatif/Desktop/Apps/HeyClaw/ \
-  root@93.115.26.164:/opt/heyclaw/
+  root@93.115.26.164:/root/heyclaw/
 ```
 
 ---
 
 ## Step 2: Create the database
 
-SSH into the server and run schema.sql against your existing Postgres.
+SSH into the server:
 
 ```bash
 ssh root@93.115.26.164
 ```
 
-Find your Postgres container name:
+Find your Postgres container:
 
 ```bash
 docker ps | grep postgres
-# Note the container name, e.g. "my-postgres" or "postgres-1"
+# Note the container name, e.g. "companion-db"
 ```
 
 Create the database and run the schema:
 
 ```bash
-# Create the database + user (adjust container name)
+# Create user + database (adjust container name)
 docker exec -i companion-db psql -U postgres -c "CREATE USER openclaw WITH PASSWORD 'PICK_A_SECURE_PASSWORD';"
 docker exec -i companion-db psql -U postgres -c "CREATE DATABASE openclaw_app OWNER openclaw;"
 
 # Run the schema
-docker exec -i companion-db psql -U openclaw -d openclaw_app < /opt/heyclaw/infrastructure/server/db/schema.sql
+docker exec -i companion-db psql -U openclaw -d openclaw_app < /root/heyclaw/infrastructure/server/db/schema.sql
 ```
 
-Verify tables were created:
+Verify tables:
 
 ```bash
 docker exec -i companion-db psql -U openclaw -d openclaw_app -c "\dt"
 # Should show: users, subscriptions, plan_limits, assistants, daily_usage, etc.
 ```
 
+This creates:
+- Auto-creates a `free` subscription on user signup (DB trigger)
+- `increment_daily_usage()` function for atomic rate limiting
+- Three plans: `free` (50 msgs/day), `pro` (500/day), `premium` (2000/day)
+
 ---
 
-## Step 3: Understand the OpenClaw setup
+## Step 3: Understanding the OpenClaw Gateway
 
-OpenClaw is the AI agent framework that runs inside the `heyclaw-gateway` container. You don't need to install or configure it manually — it's fully automated.
+OpenClaw is the AI agent framework running inside `heyclaw-gateway`. It's fully automated — no manual installation needed.
 
-### What happens automatically
+### What happens automatically on first boot
 
-When you run `docker compose up`, the gateway container:
-
-1. **Installs OpenClaw** — `npm install -g openclaw@latest` (baked into the Docker image at build time, see `infrastructure/gateway.Dockerfile`)
-2. **Generates `openclaw.json`** — on first boot only, the entrypoint script (`infrastructure/gateway-entrypoint.sh`) creates the config at `/root/.openclaw/openclaw.json` with:
-   - OpenAI custom provider pointing to `https://api.openai.com/v1`
-   - Model: `gpt-5-nano` (via your `OPENAI_API_KEY`)
-   - Token-based gateway auth (via your `OPENCLAW_GATEWAY_TOKEN`)
-   - Empty agent list (agents get added when users sign up)
-3. **Starts the gateway** — runs `openclaw gateway --bind lan --port 18789`
-4. **Persists config across restarts** — the `openclaw_config` Docker volume keeps `openclaw.json` and agent state. The config is only generated on first boot; subsequent restarts preserve the existing agent list.
+1. **OpenClaw is pre-installed** in the Docker image (`npm install -g openclaw@latest`, see `infrastructure/gateway.Dockerfile`)
+2. **Config is auto-generated** by `infrastructure/gateway-entrypoint.sh` at `/root/.openclaw/openclaw.json` with:
+   - OpenAI custom provider: `openai-custom/gpt-5-nano`
+   - Token-based auth (from `OPENCLAW_GATEWAY_TOKEN` env var)
+   - HTTP chatCompletions endpoint enabled
+   - Sandbox mode OFF (critical — see troubleshooting)
+   - Empty agent list (populated as users sign up)
+3. **Gateway starts** with `openclaw gateway --bind lan --port 18789 --allow-unconfigured`
+4. **Config persists** via Docker volume — only regenerated if the file doesn't exist
 
 ### What happens when a user signs up
 
-The API server (`auth.ts` → `agentManager.ts`):
+1. API creates workspace at `/openclaw-workspaces/agent-<userId>/` with SOUL.md, AGENTS.md, MEMORY.md, USER.md
+2. API adds agent to `/openclaw-config/openclaw.json` (agent list + bindings)
+3. API runs `docker restart heyclaw-gateway` to load the new agent
+4. Assistant row inserted in DB (maps user_id -> agent_id)
 
-1. Creates a workspace directory at `/openclaw-workspaces/agent-<userId>/`
-2. Copies `SOUL.md` and `AGENTS.md` templates into the workspace (from `infrastructure/server/templates/`)
-3. Creates empty `MEMORY.md` and `USER.md` files
-4. Adds the agent to `openclaw.json` (agent list + bindings)
-5. Runs `docker restart heyclaw-gateway` to pick up the new agent
+### How messages are routed
+
+```
+POST /agent/message {"text": "Hello"}
+  -> JWT auth + rate limit check
+  -> Look up agent_id from assistants table
+  -> POST to gateway:18789/v1/chat/completions
+     Headers: Authorization: Bearer <OPENCLAW_GATEWAY_TOKEN>
+              x-openclaw-agent-id: <agent-id>
+  -> Gateway routes to correct agent, calls OpenAI
+  -> Response returned with usage counter
+```
 
 ### Key files
 
-| File | What it does |
-|------|-------------|
-| `infrastructure/gateway.Dockerfile` | Builds the OpenClaw image (node:22 + openclaw) |
-| `infrastructure/gateway-entrypoint.sh` | Generates initial config on first boot, starts gateway |
-| `infrastructure/server/templates/SOUL.md` | Agent personality template (copied per user) |
-| `infrastructure/server/templates/AGENTS.md` | Agent capabilities/rules (copied per user) |
-| `apps/api/src/services/agentManager.ts` | Adds/removes agents from `openclaw.json` at runtime |
-| `apps/api/src/services/openclawClient.ts` | Sends messages to specific agents on the gateway |
-
-### Config location inside containers
-
-| Path | Container | Purpose |
-|------|-----------|---------|
-| `/root/.openclaw/openclaw.json` | heyclaw-gateway | Gateway config (agents, models, auth) |
-| `/root/.openclaw/workspaces/agent-xxx/` | heyclaw-gateway | Per-user agent files (SOUL.md, MEMORY.md) |
-| `/openclaw-config/openclaw.json` | heyclaw-api | Same file, shared via Docker volume |
-| `/openclaw-workspaces/agent-xxx/` | heyclaw-api | Same dir, shared via Docker volume |
-
-Both containers mount the same Docker volumes (`openclaw_config`, `openclaw_workspaces`), so the API can write config changes and the gateway reads them.
-
-### No OpenClaw account needed
-
-OpenClaw runs with `--allow-unconfigured`, meaning it doesn't need a cloud account or license. It uses your OpenAI API key directly via the custom provider config.
+| File | Purpose |
+|------|---------|
+| `infrastructure/gateway.Dockerfile` | Gateway image (Node 22 + OpenClaw) |
+| `infrastructure/gateway-entrypoint.sh` | Config generation + gateway startup |
+| `infrastructure/server/templates/SOUL.md` | Default agent personality |
+| `infrastructure/server/templates/AGENTS.md` | Default agent instructions |
+| `apps/api/src/services/agentManager.ts` | Adds/removes agents from config |
+| `apps/api/src/services/openclawClient.ts` | HTTP client for gateway |
 
 ---
 
-## Step 4: Find your Postgres + Redis container names
-
-You need the container names (or IPs) of your existing Postgres and Redis.
+## Step 4: Create .env.production
 
 ```bash
-# Get container names
-docker ps --format "{{.Names}}\t{{.Image}}\t{{.Ports}}" | grep -E "postgres|redis"
-
-# Example output:
-# my-postgres   postgres:16    0.0.0.0:5432->5432/tcp
-# my-redis      redis:7        0.0.0.0:6379->6379/tcp
-```
-
-companion-db	postgres:15-alpine	5432/tcp
-companion-redis	redis:7-alpine	6379/tcp
-
-Note down the container names. You'll use them in Step 5.
-
----
-
-## Step 5: Create .env.production
-
-```bash
-cd /opt/heyclaw
+cd /root/heyclaw
 cp .env.production.example .env.production
-nano .env.production    # or vim
+nano .env.production
 ```
 
-Fill in the values:
+Fill in:
 
 ```env
 PORT=3000
 NODE_ENV=production
 
-# Point to your EXISTING Postgres container
-# Replace YOUR_POSTGRES_CONTAINER with the actual container name
-# Replace YOUR_PASSWORD with the password from Step 2
-DATABASE_URL=postgres://openclaw:YOUR_PASSWORD@YOUR_POSTGRES_CONTAINER:5432/openclaw_app
+# PostgreSQL (use Docker container name, NOT host.docker.internal)
+DATABASE_URL=postgres://openclaw:YOUR_PASSWORD@companion-db:5432/openclaw_app
 
-# Point to your EXISTING Redis container
-REDIS_URL=redis://YOUR_REDIS_CONTAINER:6379
+# Redis (use Docker container name)
+REDIS_URL=redis://companion-redis:6379
 
-# Generate a random JWT secret
-JWT_SECRET=PASTE_OUTPUT_OF_NEXT_COMMAND
+# Auth — generate a strong secret
+JWT_SECRET=<paste output of: openssl rand -hex 64>
 
-# Your API keys
-OPENAI_API_KEY=sk-proj-...
-ELEVENLABS_API_KEY=sk_...
+# OpenAI (for GPT-5 Nano model + Whisper STT)
+OPENAI_API_KEY=sk-your-real-key
 
-# Gateway (don't change these — they use Docker service names)
+# ElevenLabs TTS
+ELEVENLABS_API_KEY=your-real-key
+
+# OpenClaw Gateway — shared token between API and gateway
 OPENCLAW_GATEWAY_URL=http://gateway:18789
+OPENCLAW_GATEWAY_TOKEN=<paste output of: openssl rand -hex 32>
+
+# Paths (API container paths — gateway overrides these in docker-compose.yml)
 OPENCLAW_CONFIG_PATH=/openclaw-config/openclaw.json
 WORKSPACES_DIR=/openclaw-workspaces
+GATEWAY_WORKSPACES_DIR=/root/.openclaw/workspaces
 TEMPLATES_DIR=/app/templates
 GATEWAY_CONTAINER_NAME=heyclaw-gateway
 ```
 
-Generate the JWT secret:
+Generate secrets:
 
 ```bash
-openssl rand -hex 64
+echo "JWT_SECRET: $(openssl rand -hex 64)"
+echo "OPENCLAW_GATEWAY_TOKEN: $(openssl rand -hex 32)"
 ```
-
-> **Note:** The gateway auth token is auto-generated by OpenClaw on first boot. The API reads it automatically from the shared `openclaw.json` config volume — no manual setup needed.
 
 ---
 
-## Step 6: Connect your existing containers to the heyclaw network
-
-The API and gateway containers run on a Docker network called `heyclaw`. Your existing Postgres and Redis containers need to be on the same network so they can talk to each other.
+## Step 5: Connect existing containers to the heyclaw network
 
 ```bash
-# Create the network (docker compose will also do this, but do it now so we can connect)
+# Create network (docker compose also does this, but create now for pre-connecting)
 docker network create heyclaw 2>/dev/null || true
 
-# Connect your existing containers
+# Connect your existing Postgres + Redis containers
 docker network connect heyclaw companion-db
 docker network connect heyclaw companion-redis
-```
 
-Verify they're connected:
-
-```bash
+# Verify
 docker network inspect heyclaw --format '{{range .Containers}}{{.Name}} {{end}}'
-# Should list your postgres and redis container names
 ```
 
 ---
 
-## Step 7: Build and start
+## Step 6: Build and start
 
 ```bash
-cd /opt/heyclaw
-
-# Load env vars for docker-compose substitution
-set -a && source .env.production && set +a
-
-# Build both images
-docker compose build
-
-# Start everything
-docker compose up -d
+cd /root/heyclaw
+docker compose up -d --build
 ```
 
-This starts two containers:
-- `heyclaw-gateway` — OpenClaw AI gateway (port 18789, localhost only)
-- `heyclaw-api` — Hono API server (port 3000, public)
+This builds two images:
+- **Gateway** (`infrastructure/gateway.Dockerfile`): Node.js 22 + OpenClaw globally installed
+- **API** (`apps/api/Dockerfile`): Node.js 20 + compiled TypeScript + Docker CLI
 
 ---
 
-## Step 8: Verify
+## Step 7: Verify deployment
 
 ```bash
-# Check containers are running
+# 1. Check containers are running
 docker compose ps
 
-# Check API health
+# 2. Check API health
 curl http://localhost:3000/health
+# Expected: {"status":"ok","service":"heyclaw-api"}
 
-# Check gateway is reachable from API
-docker exec heyclaw-api node -e "fetch('http://gateway:18789/').then(r => r.text()).then(console.log).catch(e => console.error('Gateway not ready:', e.message))"
+# 3. Check gateway logs
+docker logs heyclaw-gateway --tail 10
+# Expected: "[gateway] listening on ws://0.0.0.0:18789"
 
-# Check API can reach Postgres
-docker exec heyclaw-api node -e "
-  const {Pool} = require('pg');
-  const p = new Pool({connectionString: process.env.DATABASE_URL});
-  p.query('SELECT COUNT(*) FROM users').then(r => {
-    console.log('DB OK — users:', r.rows[0].count);
-    p.end();
-  }).catch(e => { console.error('DB error:', e.message); p.end(); });
+# 4. Verify gateway config is correct
+docker exec heyclaw-gateway python3 -c "
+import json
+c = json.load(open('/root/.openclaw/openclaw.json'))
+print('chatCompletions:', c['gateway']['http']['endpoints']['chatCompletions'])
+print('sandbox:', c['agents']['defaults']['sandbox'])
+print('auth mode:', c['gateway']['auth']['mode'])
 "
+# Expected:
+#   chatCompletions: {'enabled': True}
+#   sandbox: {'mode': 'off', 'workspaceAccess': 'rw'}
+#   auth mode: token
 
-# Check API can reach Redis
-docker exec heyclaw-api node -e "
-  const Redis = require('ioredis');
-  const r = new Redis(process.env.REDIS_URL);
-  r.ping().then(res => { console.log('Redis OK:', res); r.disconnect(); })
-    .catch(e => { console.error('Redis error:', e.message); r.disconnect(); });
-"
+# 5. Verify both containers have the same gateway token
+docker exec heyclaw-gateway sh -c 'echo "GW: $OPENCLAW_GATEWAY_TOKEN"'
+docker exec heyclaw-api sh -c 'echo "API: $OPENCLAW_GATEWAY_TOKEN"'
+# Must match!
+
+# 6. Test gateway directly from API container
+docker exec heyclaw-api curl -s --max-time 15 -X POST http://gateway:18789/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(docker exec heyclaw-api printenv OPENCLAW_GATEWAY_TOKEN)" \
+  -H "x-openclaw-agent-id: test-agent" \
+  -d '{"model":"openclaw","messages":[{"role":"user","content":"Hello"}]}'
+# Expected: JSON with choices[0].message.content
 ```
 
 ---
 
-## Step 9: Test signup + message flow
+## Step 8: Test the full signup + message flow
 
 ```bash
 # Sign up a test user
-curl -s -X POST http://93.115.26.164:3000/auth/signup \
+curl -s -X POST http://localhost:3000/auth/signup \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@test.com","password":"testpass123","name":"Test User"}' | jq .
+  -d '{"email":"test@test.com","password":"testpass123","name":"Test User"}' | python3 -m json.tool
 
-# Save the access token from the response
-TOKEN="paste-access-token-here"
+# Save the access_token from the response
+TOKEN="<paste access_token here>"
 
 # Check agent was created
-curl -s http://93.115.26.164:3000/agent/status \
-  -H "Authorization: Bearer $TOKEN" | jq .
+curl -s http://localhost:3000/agent/status \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 
-# Send a message
-curl -s -X POST http://93.115.26.164:3000/agent/message \
+# Send a message (NOTE: field is "text", not "message")
+curl -s --max-time 30 -X POST http://localhost:3000/agent/message \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"text":"Hello, who are you?"}' | jq .
+  -d '{"text":"Hello, what can you help me with?"}' | python3 -m json.tool
+
+# Expected response includes:
+# {
+#     "response": "I can help with ...",
+#     "usage": { "messagesUsed": 1, "messagesLimit": 50 }
+# }
 ```
 
-If the message returns a response from the AI, everything is working.
+If the message returns an AI response with usage tracking, everything is working end-to-end.
 
 ---
 
-## Step 10: View logs
+## How docker-compose.yml Works
 
-```bash
-# API logs (requests, errors)
-docker compose logs -f api
+Both containers share `.env.production` via `env_file`. The gateway needs **environment overrides** because volume paths differ:
 
-# Gateway logs (OpenClaw, agent creation)
-docker compose logs -f gateway
-
-# Both
-docker compose logs -f
+```yaml
+gateway:
+  env_file:
+    - .env.production         # All env vars from this file
+  environment:
+    # CRITICAL: Override paths that are API-specific
+    OPENCLAW_CONFIG_PATH: /root/.openclaw/openclaw.json   # gateway's mount
+    WORKSPACES_DIR: /root/.openclaw/workspaces            # gateway's mount
+    TEMPLATES_DIR: ""           # not needed in gateway
+    GATEWAY_CONTAINER_NAME: ""  # not needed in gateway
+    DATABASE_URL: ""            # not needed in gateway
+    REDIS_URL: ""               # not needed in gateway
 ```
+
+**Why?** `.env.production` has `OPENCLAW_CONFIG_PATH=/openclaw-config/openclaw.json` (the API container's path). Without the override, the gateway tries to read from `/openclaw-config/` which doesn't exist inside the gateway container, causing it to fall back to defaults with HTTP API disabled.
 
 ---
 
-## Updating / Redeploying
+## API Endpoints Reference
 
-After code changes, push to the server and rebuild:
+### Auth
+
+| Method | Path | Auth | Body | Description |
+|--------|------|------|------|-------------|
+| POST | `/auth/signup` | No | `{email, password, name?}` | Create account + agent |
+| POST | `/auth/login` | No | `{email, password}` | Login, get tokens |
+| POST | `/auth/refresh` | No | `{refresh_token}` | Rotate tokens |
+| POST | `/auth/logout` | Yes | — | Blacklist JWT, revoke refresh |
+| POST | `/auth/forgot-password` | No | `{email}` | Request password reset |
+| POST | `/auth/reset-password` | No | `{token, new_password}` | Reset password |
+
+### Agent
+
+| Method | Path | Auth | Body | Description |
+|--------|------|------|------|-------------|
+| POST | `/agent/message` | Yes | `{"text": "..."}` | Send message, get response |
+| POST | `/agent/voice` | Yes | `{"text": "...", "voice?": "nova", "nativeTts?": false}` | SSE stream with text + audio |
+| GET | `/agent/status` | Yes | — | Agent status + message count |
+| GET | `/agent/health` | Yes | — | Gateway health check |
+| PATCH | `/agent/personality` | Yes | `{displayName?, voice?}` | Update assistant settings |
+
+### Other
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health` | No | API health check |
+| GET | `/user/me` | Yes | User profile + usage |
+| * | `/chat/*` | Yes | Chat session CRUD |
+| * | `/billing/*` | Yes | Apple IAP management |
+
+---
+
+## Common Operations
+
+### View logs
 
 ```bash
-# From your Mac — sync code
-rsync -avz --exclude node_modules --exclude .git \
-  /Users/usamalatif/Desktop/Apps/HeyClaw/ \
-  root@93.115.26.164:/opt/heyclaw/
+docker compose logs -f          # Both containers
+docker compose logs -f api      # API only
+docker compose logs -f gateway  # Gateway only
+```
 
-# On the server — rebuild + restart API only (gateway rarely changes)
-ssh root@93.115.26.164
-cd /opt/heyclaw
+### Rebuild and redeploy
+
+```bash
+cd /root/heyclaw
+git pull    # or rsync from Mac
+docker compose down
+docker compose up -d --build
+```
+
+Agent data persists (Docker volumes). Gateway config is only regenerated if deleted.
+
+### Rebuild API only (faster)
+
+```bash
 docker compose build api && docker compose up -d api
-
-# If gateway code changed too:
-docker compose build && docker compose up -d
 ```
 
----
-
-## Troubleshooting
-
-### API can't reach Postgres/Redis
+### Check registered agents
 
 ```bash
-# Check your containers are on the heyclaw network
-docker network inspect heyclaw
-
-# If not, reconnect them
-docker network connect heyclaw YOUR_POSTGRES_CONTAINER
-docker network connect heyclaw YOUR_REDIS_CONTAINER
+docker exec heyclaw-gateway python3 -c "
+import json
+c = json.load(open('/root/.openclaw/openclaw.json'))
+for a in c['agents']['list']:
+    print(f\"  {a['id']} -> {a['workspace']}\")
+print(f'Total: {len(c[\"agents\"][\"list\"])} agents')
+"
 ```
 
-### Gateway takes long to start
+### Force regenerate gateway config
 
-OpenClaw needs 10-30 seconds to initialize. The API retries automatically. Check gateway logs:
+**Warning:** This removes all registered agents. Users will need agents re-created (happens on next signup/login).
 
 ```bash
-docker compose logs -f gateway
+docker exec heyclaw-gateway rm /root/.openclaw/openclaw.json
+docker restart heyclaw-gateway
+sleep 15
+docker exec heyclaw-gateway python3 -c "
+import json; print(json.dumps(json.load(open('/root/.openclaw/openclaw.json')), indent=2))
+"
 ```
 
-### Agent creation fails on signup
-
-Check the API logs for the error:
+### Database queries
 
 ```bash
-docker compose logs api | grep "Failed to create agent"
-```
+# Connect to PostgreSQL
+docker exec -it companion-db psql -U openclaw -d openclaw_app
 
-Common causes:
-- Gateway not ready yet (restart API: `docker compose restart api`)
-- Config volume permissions (check: `docker exec heyclaw-api ls -la /openclaw-config/`)
-
-### Database schema missing
-
-```bash
-docker exec -i YOUR_POSTGRES_CONTAINER psql -U openclaw -d openclaw_app < /opt/heyclaw/infrastructure/server/db/schema.sql
+# Useful queries:
+SELECT id, email, created_at FROM users;
+SELECT user_id, agent_id, status, message_count FROM assistants;
+SELECT u.email, d.date, d.text_messages FROM daily_usage d JOIN users u ON u.id = d.user_id ORDER BY d.date DESC;
+SELECT u.email, s.plan, s.status FROM subscriptions s JOIN users u ON u.id = s.user_id;
 ```
 
 ### Reset everything (start fresh)
@@ -366,9 +436,9 @@ docker compose down
 docker volume rm heyclaw_openclaw_config heyclaw_openclaw_workspaces
 
 # Re-create database
-docker exec -i YOUR_POSTGRES_CONTAINER psql -U postgres -c "DROP DATABASE IF EXISTS openclaw_app;"
-docker exec -i YOUR_POSTGRES_CONTAINER psql -U postgres -c "CREATE DATABASE openclaw_app OWNER openclaw;"
-docker exec -i YOUR_POSTGRES_CONTAINER psql -U openclaw -d openclaw_app < /opt/heyclaw/infrastructure/server/db/schema.sql
+docker exec -i companion-db psql -U postgres -c "DROP DATABASE IF EXISTS openclaw_app;"
+docker exec -i companion-db psql -U postgres -c "CREATE DATABASE openclaw_app OWNER openclaw;"
+docker exec -i companion-db psql -U openclaw -d openclaw_app < /root/heyclaw/infrastructure/server/db/schema.sql
 
 # Rebuild and start
 docker compose build && docker compose up -d
@@ -376,31 +446,135 @@ docker compose build && docker compose up -d
 
 ---
 
-## Architecture Summary
+## Troubleshooting
 
-```
-Internet
-   │
-   ▼ :3000
-┌──────────────┐     ┌──────────────────┐
-│  heyclaw-api │────▶│ heyclaw-gateway   │
-│  (Hono)      │     │ (OpenClaw)        │
-│              │     │                   │
-│ • Auth (JWT) │     │ • agent-user1     │
-│ • Rate limit │     │ • agent-user2     │
-│ • TTS        │     │ • agent-user3     │
-└──────┬───────┘     └───────────────────┘
-       │                  ▲
-       │                  │ reads config +
-       │                  │ workspaces
-       ▼                  │
-┌──────────────┐   ┌─────────────┐
-│ PostgreSQL   │   │ Docker      │
-│ (existing)   │   │ Volumes     │
-├──────────────┤   │             │
-│ Redis        │   │ • config    │
-│ (existing)   │   │ • workspaces│
-└──────────────┘   └─────────────┘
+### Gateway returns 405 Method Not Allowed on POST
+
+The HTTP chatCompletions endpoint is disabled in the config.
+
+```bash
+docker exec heyclaw-gateway python3 -c "
+import json; c = json.load(open('/root/.openclaw/openclaw.json'))
+print(c['gateway']['http']['endpoints'])
+"
 ```
 
-All on Docker network: `heyclaw`
+**Fix:** Must show `{'chatCompletions': {'enabled': True}}`. If wrong, delete config and restart to regenerate (see "Force regenerate" above).
+
+**Root cause:** The gateway read `OPENCLAW_CONFIG_PATH` from `.env.production` which points to `/openclaw-config/...` (API's path). That path doesn't exist in the gateway container, so OpenClaw fell back to defaults with HTTP disabled. The `environment:` overrides in `docker-compose.yml` fix this.
+
+### Gateway crashes with `spawn docker ENOENT`
+
+OpenClaw sandbox mode tries to spawn Docker CLI, which isn't installed in the gateway container.
+
+```bash
+docker exec heyclaw-gateway python3 -c "
+import json; c = json.load(open('/root/.openclaw/openclaw.json'))
+print(c['agents']['defaults']['sandbox'])
+"
+```
+
+**Fix:** Must show `{'mode': 'off', 'workspaceAccess': 'rw'}`. If it shows `mode: 'all'`, delete config and restart to regenerate with the corrected entrypoint.
+
+### API gets 401 Unauthorized from Gateway
+
+Token mismatch between containers.
+
+```bash
+docker exec heyclaw-gateway sh -c 'echo "GW: $OPENCLAW_GATEWAY_TOKEN"'
+docker exec heyclaw-api sh -c 'echo "API: $OPENCLAW_GATEWAY_TOKEN"'
+```
+
+**Fix:** Both must show the same token. If empty or different, check `.env.production` has `OPENCLAW_GATEWAY_TOKEN` set, then `docker compose down && docker compose up -d`.
+
+### Gateway reads wrong config path
+
+```bash
+docker exec heyclaw-gateway env | grep OPENCLAW_CONFIG_PATH
+```
+
+**Fix:** Must show `/root/.openclaw/openclaw.json` (not `/openclaw-config/...`). Ensure `docker-compose.yml` has the `environment:` override for `OPENCLAW_CONFIG_PATH`.
+
+### Empty reply from server / Connection reset
+
+Gateway crashed mid-request. Check logs:
+
+```bash
+docker logs heyclaw-gateway --tail 30
+```
+
+Most common cause: sandbox `spawn docker ENOENT` crash (see above).
+
+### Agent creation fails on signup
+
+```bash
+docker compose logs api | grep "Failed to create agent"
+```
+
+Common causes:
+- Gateway not ready (takes 10-30s to start) — restart API: `docker compose restart api`
+- Config volume permissions: `docker exec heyclaw-api ls -la /openclaw-config/`
+- Templates missing: `docker exec heyclaw-api ls -la /app/templates/`
+
+### Config change not taking effect
+
+The gateway entrypoint only generates config if the file doesn't exist (`if [ ! -f "$CONFIG_PATH" ]`). To apply entrypoint changes:
+
+```bash
+# Delete old config so it regenerates
+docker exec heyclaw-gateway rm /root/.openclaw/openclaw.json
+docker restart heyclaw-gateway
+```
+
+### Env var changes not taking effect
+
+Docker container env vars are baked at creation time. Changing `.env.production` requires container recreation:
+
+```bash
+docker compose down && docker compose up -d
+```
+
+Just `docker restart` is NOT enough.
+
+---
+
+## File Structure
+
+```
+HeyClaw/
+  .env.production              # Production secrets (NOT in git)
+  .env.production.example      # Template with placeholder values
+  docker-compose.yml           # Orchestrates gateway + API containers
+
+  apps/api/
+    Dockerfile                 # API image (Node 20 + Docker CLI)
+    src/
+      index.ts                 # Hono app entry point
+      routes/
+        auth.ts                # Signup, login, refresh, logout, password reset
+        agent.ts               # Message, voice (SSE), status, personality
+        user.ts                # Profile, usage info
+        chat.ts                # Chat session CRUD
+        billing.ts             # Apple IAP subscription management
+        voice.ts               # STT (Whisper)
+      services/
+        agentManager.ts        # Create/remove agents in openclaw.json
+        openclawClient.ts      # HTTP client for gateway (token auth + agent routing)
+        tts.ts                 # ElevenLabs TTS
+        usage.ts               # Daily usage tracking (Redis + PostgreSQL)
+      middleware/
+        auth.ts                # JWT verification + Redis blacklist
+        rateLimiter.ts         # Daily limit enforcement per plan
+      db/
+        pool.ts                # PostgreSQL connection pool
+        redis.ts               # Redis (ioredis) connection
+
+  infrastructure/
+    gateway.Dockerfile         # Gateway image (Node 22 + OpenClaw)
+    gateway-entrypoint.sh      # Config generation + gateway startup
+    server/
+      db/schema.sql            # Full database schema (tables, triggers, functions)
+      templates/
+        SOUL.md                # Default agent personality (copied per user)
+        AGENTS.md              # Default agent instructions (copied per user)
+```

@@ -5,6 +5,8 @@ import {
   Image,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Keyboard,
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -61,6 +63,7 @@ export default function LoginScreen() {
   };
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
     <View style={styles.container}>
       <Image source={clawIcon} style={styles.logoIcon} />
       <Text style={styles.logo}>HeyClaw</Text>
@@ -107,6 +110,7 @@ export default function LoginScreen() {
         By continuing, you agree to our Terms & Privacy Policy
       </Text>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

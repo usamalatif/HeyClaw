@@ -19,15 +19,15 @@ async function tryRefresh(): Promise<boolean> {
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({refreshToken: tokens.refreshToken}),
+      body: JSON.stringify({refresh_token: tokens.refreshToken}),
     });
 
     if (!res.ok) return false;
 
     const data = await res.json();
     await saveTokens({
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
     });
     return true;
   } catch {
@@ -83,7 +83,11 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Signup failed');
-    return data;
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      user: data.user,
+    };
   },
 
   login: async (email: string, password: string) => {
@@ -94,7 +98,11 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Login failed');
-    return data;
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      user: data.user,
+    };
   },
 
   logout: async () => {

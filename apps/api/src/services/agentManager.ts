@@ -9,16 +9,23 @@ const TEMPLATES_DIR = process.env.TEMPLATES_DIR || path.join(process.cwd(), 'tem
 let reloadTimer: NodeJS.Timeout | null = null;
 const RELOAD_DEBOUNCE_MS = parseInt(process.env.GATEWAY_RELOAD_DEBOUNCE_MS || '5000');
 
+interface AgentEntry {
+  id: string;
+  name: string;
+  workspace: string;
+  [key: string]: any;
+}
+
 interface OpenClawConfig {
   gateway: any;
   models: any;
   agents: {
     defaults: any;
-    list: Array<{id: string; name: string; workspace: string; model: {id: string}}>;
+    list: AgentEntry[];
   };
   bindings: Array<{agentId: string; match: any}>;
   channels: any;
-  heartbeat: any;
+  [key: string]: any;
 }
 
 function getConfig(): OpenClawConfig {
@@ -56,7 +63,6 @@ function reloadGateway(): Promise<void> {
 
 export async function createAgent(
   agentId: string,
-  model?: string,
 ): Promise<{agentId: string; workspacePath: string}> {
   const config = getConfig();
 
@@ -86,12 +92,11 @@ export async function createAgent(
   fs.writeFileSync(path.join(workspacePath, 'MEMORY.md'), '# Memory\n');
   fs.writeFileSync(path.join(workspacePath, 'USER.md'), '# User Preferences\n');
 
-  // Add to config
+  // Add to config — no model field, inherits from providers default
   config.agents.list.push({
     id: agentId,
     name: agentId,
     workspace: workspacePath,
-    model: {id: model || 'openai-custom/gpt-5-nano'},
   });
 
   config.bindings.push({
@@ -142,7 +147,7 @@ export async function pauseAgent(agentId: string): Promise<void> {
   console.log(`[AgentManager] Agent paused: ${agentId}`);
 }
 
-export async function resumeAgent(agentId: string, model?: string): Promise<void> {
+export async function resumeAgent(agentId: string): Promise<void> {
   const workspacePath = path.join(WORKSPACES_DIR, agentId);
   if (!fs.existsSync(workspacePath)) {
     throw new Error(`Agent workspace not found: ${agentId}`);
@@ -155,7 +160,6 @@ export async function resumeAgent(agentId: string, model?: string): Promise<void
     id: agentId,
     name: agentId,
     workspace: workspacePath,
-    model: {id: model || 'openai-custom/gpt-5-nano'},
   });
 
   config.bindings.push({
@@ -176,10 +180,9 @@ export function getAgentCount(): number {
   return getConfig().agents.list.length;
 }
 
-export function listAgents(): Array<{id: string; name: string; model: {id: string}}> {
+export function listAgents(): Array<{id: string; name: string}> {
   return getConfig().agents.list.map(a => ({
     id: a.id,
     name: a.name,
-    model: a.model,
   }));
 }

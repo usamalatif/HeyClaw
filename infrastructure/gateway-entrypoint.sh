@@ -34,7 +34,6 @@ if [ ! -f "$CONFIG_PATH" ]; then
   },
   "agents": {
     "defaults": {
-      "model": { "id": "openai-custom/gpt-5-nano" },
       "sandbox": { "mode": "all", "workspaceAccess": "rw" }
     },
     "list": []

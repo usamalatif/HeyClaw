@@ -20,6 +20,7 @@ app.use('*', logger());
 
 // Health check
 app.get('/', c => c.json({status: 'ok', service: 'heyclaw-api'}));
+app.get('/health', c => c.json({status: 'ok', service: 'heyclaw-api'}));
 
 // Routes
 app.route('/auth', authRoutes);

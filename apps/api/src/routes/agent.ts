@@ -7,7 +7,7 @@ import type {AppEnv} from '../lib/types.js';
 import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
 import {checkLimit, incrementUsage} from '../services/usage.js';
-import {agentExists} from '../services/agentManager.js';
+import {agentExists, createAgent, resumeAgent} from '../services/agentManager.js';
 import {cacheRecentMessages, getCachedRecentMessages} from '../db/redis.js';
 
 // Parse action markers from agent response text
@@ -345,6 +345,77 @@ agentRoutes.get('/health', async c => {
   } catch {
     return c.json({healthy: false, reason: 'unreachable'});
   }
+});
+
+// POST /agent/provision — Create or repair agent if missing
+// Called automatically by mobile app if agent status shows issues
+agentRoutes.post('/provision', async c => {
+  const userId = c.get('userId');
+
+  // Check if user has an assistant record
+  const assistantResult = await db.query(
+    `SELECT agent_id, status FROM assistants WHERE user_id = $1 LIMIT 1`,
+    [userId],
+  );
+
+  let agentId: string;
+
+  if (!assistantResult.rows[0]) {
+    // No assistant record — create from scratch
+    agentId = `agent-${userId}`;
+    try {
+      await createAgent(agentId);
+      await db.query(
+        `INSERT INTO assistants (user_id, agent_id, display_name, voice)
+         VALUES ($1, $2, $3, $4)`,
+        [userId, agentId, 'My Assistant', 'nova'],
+      );
+      console.log(`[Provision] Created new agent for user ${userId}`);
+      return c.json({status: 'created', agentId});
+    } catch (err: any) {
+      console.error(`[Provision] Failed to create agent:`, err.message);
+      return c.json({status: 'error', message: err.message}, 500);
+    }
+  }
+
+  agentId = assistantResult.rows[0].agent_id;
+  const status = assistantResult.rows[0].status;
+
+  // Check if agent exists in gateway config
+  const exists = agentExists(agentId);
+
+  if (exists && status === 'active') {
+    return c.json({status: 'ok', agentId, message: 'Agent already running'});
+  }
+
+  if (!exists || status === 'paused') {
+    // Agent missing from config or paused — resume it
+    try {
+      await resumeAgent(agentId);
+      await db.query(
+        `UPDATE assistants SET status = 'active' WHERE agent_id = $1`,
+        [agentId],
+      );
+      console.log(`[Provision] Resumed agent ${agentId}`);
+      return c.json({status: 'resumed', agentId});
+    } catch (err: any) {
+      // Workspace might be missing — recreate
+      try {
+        await createAgent(agentId);
+        await db.query(
+          `UPDATE assistants SET status = 'active' WHERE agent_id = $1`,
+          [agentId],
+        );
+        console.log(`[Provision] Recreated agent ${agentId}`);
+        return c.json({status: 'recreated', agentId});
+      } catch (createErr: any) {
+        console.error(`[Provision] Failed to recreate agent:`, createErr.message);
+        return c.json({status: 'error', message: createErr.message}, 500);
+      }
+    }
+  }
+
+  return c.json({status: 'ok', agentId});
 });
 
 // Update assistant personality/display name

@@ -11,6 +11,7 @@ import {agentRoutes} from './routes/agent.js';
 import {chatRoutes} from './routes/chat.js';
 import {billingRoutes} from './routes/billing.js';
 import {automationRoutes} from './routes/automation.js';
+import {cronRoutes} from './routes/cron.js';
 
 const app = new Hono();
 
@@ -30,6 +31,7 @@ app.route('/agent', agentRoutes);
 app.route('/chat', chatRoutes);
 app.route('/billing', billingRoutes);
 app.route('/automation', automationRoutes);
+app.route('/cron', cronRoutes);
 
 const port = Number(process.env.PORT) || 3000;
 console.log(`HeyClaw API running on port ${port}`);

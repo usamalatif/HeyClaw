@@ -92,10 +92,17 @@ The gateway receives:
 
 OpenClaw:
 1. Looks up `agent-abc123` in its config
-2. Loads the agent's workspace (SOUL.md for personality, MEMORY.md for context)
+2. Loads the agent's workspace files:
+   - `SOUL.md` — Personality and behavior
+   - `AGENTS.md` — Instructions and capabilities
+   - `USER.md` — User preferences
+   - `IDENTITY.md` — Agent name and emoji
+   - `MEMORY.md` — Long-term memory
+   - `TOOLS.md` — User-specific settings
+   - `memory/` — Daily conversation logs
 3. Sends the prompt to the configured LLM (gpt-5-nano via OpenAI API)
 4. Returns the response (streaming or non-streaming)
-5. Updates the agent's MEMORY.md with new conversation context
+5. Updates the agent's memory files with new context
 
 **File**: `apps/api/src/services/openclawClient.ts`
 
@@ -203,10 +210,19 @@ assistants
 
 Each agent is isolated through:
 
-1. **Separate workspace**: Each agent reads/writes its own SOUL.md, MEMORY.md, etc.
-2. **Conversation context**: OpenClaw maintains per-agent conversation history
-3. **API routing**: The `agent` field in requests ensures messages go to the right agent
-4. **Tool restrictions**: `tools.deny` prevents agents from executing code or accessing the filesystem outside their workspace
+1. **Separate workspace**: Each agent reads/writes its own files:
+   - `SOUL.md` — Personality
+   - `AGENTS.md` — Instructions
+   - `USER.md` — User profile
+   - `IDENTITY.md` — Agent identity
+   - `MEMORY.md` — Long-term memory
+   - `TOOLS.md` — Preferences
+   - `memory/` — Daily logs
+2. **Session isolation**: `dmScope: "per-channel-peer"` ensures each user's sessions are completely isolated
+3. **Sandbox isolation**: `scope: "agent"` keeps each agent's execution environment separate
+4. **Conversation context**: OpenClaw maintains per-agent conversation history
+5. **API routing**: The `agent` field in requests ensures messages go to the right agent
+6. **Tool restrictions**: `tools.deny` prevents agents from executing code or accessing the filesystem outside their workspace
 
 Agents **share**:
 - The same LLM model and API keys

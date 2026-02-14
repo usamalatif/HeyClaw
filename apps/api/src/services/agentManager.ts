@@ -77,23 +77,31 @@ export async function createAgent(
   const localWorkspace = path.join(WORKSPACES_DIR, agentId);
   fs.mkdirSync(localWorkspace, {recursive: true});
 
-  const soulTemplate = path.join(TEMPLATES_DIR, 'SOUL.md');
-  const agentsTemplate = path.join(TEMPLATES_DIR, 'AGENTS.md');
+  // Create memory folder for daily logs
+  fs.mkdirSync(path.join(localWorkspace, 'memory'), {recursive: true});
 
-  if (fs.existsSync(soulTemplate)) {
-    fs.copyFileSync(soulTemplate, path.join(localWorkspace, 'SOUL.md'));
-  } else {
-    fs.writeFileSync(path.join(localWorkspace, 'SOUL.md'), '# Your AI Assistant\n');
+  // Template files to copy (if they exist)
+  const templateFiles = ['SOUL.md', 'AGENTS.md', 'USER.md', 'IDENTITY.md', 'TOOLS.md', 'MEMORY.md', 'HEARTBEAT.md'];
+
+  for (const fileName of templateFiles) {
+    const templatePath = path.join(TEMPLATES_DIR, fileName);
+    const destPath = path.join(localWorkspace, fileName);
+
+    if (fs.existsSync(templatePath)) {
+      fs.copyFileSync(templatePath, destPath);
+    } else {
+      // Fallback content if template doesn't exist
+      const fallbacks: Record<string, string> = {
+        'SOUL.md': '# Your AI Assistant\n\nBe helpful, friendly, and genuine.\n',
+        'AGENTS.md': '# Personal AI Assistant\n\nYou are a helpful AI assistant.\n',
+        'USER.md': '# User\n\n_(Learn about your human as you chat)_\n',
+        'IDENTITY.md': '# Identity\n\n- **Name:** Assistant\n- **Emoji:** 🤖\n',
+        'TOOLS.md': '# Preferences\n\n_(User preferences go here)_\n',
+        'MEMORY.md': '# Memory\n\n_(Important things to remember)_\n',
+      };
+      fs.writeFileSync(destPath, fallbacks[fileName] || `# ${fileName}\n`);
+    }
   }
-
-  if (fs.existsSync(agentsTemplate)) {
-    fs.copyFileSync(agentsTemplate, path.join(localWorkspace, 'AGENTS.md'));
-  } else {
-    fs.writeFileSync(path.join(localWorkspace, 'AGENTS.md'), '# Personal AI Assistant\n');
-  }
-
-  fs.writeFileSync(path.join(localWorkspace, 'MEMORY.md'), '# Memory\n');
-  fs.writeFileSync(path.join(localWorkspace, 'USER.md'), '# User Preferences\n');
 
   // Store gateway's path in config (as seen by gateway container)
   const gatewayWorkspace = path.join(GATEWAY_WORKSPACES_DIR, agentId);
@@ -116,7 +124,7 @@ export async function createAgent(
   saveConfig(config);
   await reloadGateway();
 
-  console.log(`[AgentManager] Agent created: ${agentId}`);
+  console.log(`[AgentManager] Agent created: ${agentId} with full workspace`);
   return {agentId, workspacePath: localWorkspace};
 }
 

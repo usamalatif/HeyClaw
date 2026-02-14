@@ -225,7 +225,7 @@ export default function ChatScreen() {
   const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
   const [showPaywall, setShowPaywall] = useState(false);
 
-  // Load or create chat session on mount
+  // Load recent messages (Redis-cached) then ensure session exists
   useEffect(() => {
     if (sessionId) {
       setInitialLoading(false);
@@ -233,13 +233,16 @@ export default function ChatScreen() {
     }
     const loadSession = async () => {
       try {
+        // Fast path: load last 10 messages from Redis cache
+        const recent = await api.getRecentMessages();
+        if (recent.messages?.length > 0) {
+          setMessages(recent.messages);
+        }
+
+        // Ensure a session exists for saving future messages
         const sessions = await api.getSessions();
         if (sessions.length > 0) {
-          const session = await api.getSession(sessions[0].id);
-          setSessionId(session.id);
-          if (session.messages?.length > 0) {
-            setMessages(session.messages);
-          }
+          setSessionId(sessions[0].id);
         } else {
           const session = await api.createSession();
           setSessionId(session.id);

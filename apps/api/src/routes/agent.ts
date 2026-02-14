@@ -8,6 +8,7 @@ import {chunkToSpeech, splitIntoSentences} from '../services/tts.js';
 import {sendToOpenClaw, streamFromOpenClaw} from '../services/openclawClient.js';
 import {checkLimit, incrementUsage} from '../services/usage.js';
 import {agentExists} from '../services/agentManager.js';
+import {cacheRecentMessages, getCachedRecentMessages} from '../db/redis.js';
 
 // Look up the user's active assistant's agent_id
 async function getAgentId(userId: string): Promise<string> {
@@ -52,6 +53,14 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
      WHERE agent_id = $1`,
     [agentId],
   );
+
+  // Write-through: append to Redis recent messages cache
+  const cached = await getCachedRecentMessages(userId) || [];
+  cached.push(
+    {id: Date.now().toString(), role: 'user', content: text},
+    {id: (Date.now() + 1).toString(), role: 'assistant', content: response},
+  );
+  cacheRecentMessages(userId, cached).catch(() => {});
 
   const limits = c.get('limits');
   const usage = c.get('usage');
@@ -198,6 +207,14 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
          WHERE agent_id = $1`,
         [agentId],
       );
+
+      // Write-through: append to Redis recent messages cache
+      const cached = await getCachedRecentMessages(userId) || [];
+      cached.push(
+        {id: Date.now().toString(), role: 'user', content: text, isVoice: true},
+        {id: (Date.now() + 1).toString(), role: 'assistant', content: fullText, isVoice: true},
+      );
+      cacheRecentMessages(userId, cached).catch(() => {});
 
       const limits = c.get('limits');
       const usage = c.get('usage');

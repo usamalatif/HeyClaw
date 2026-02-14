@@ -1,11 +1,42 @@
 import {Hono} from 'hono';
 import {authMiddleware} from '../middleware/auth.js';
 import {db} from '../db/pool.js';
+import {getCachedRecentMessages, cacheRecentMessages, clearRecentMessages} from '../db/redis.js';
 import type {AppEnv} from '../lib/types.js';
 
 export const chatRoutes = new Hono<AppEnv>();
 
 chatRoutes.use('*', authMiddleware);
+
+// Fast endpoint — last 10 messages from Redis, DB fallback
+chatRoutes.get('/recent', async c => {
+  const userId = c.get('userId');
+
+  // Try Redis first
+  const cached = await getCachedRecentMessages(userId);
+  if (cached) {
+    return c.json({messages: cached, source: 'cache'});
+  }
+
+  // Fallback: load latest session from DB
+  const result = await db.query(
+    `SELECT id, messages FROM chat_sessions
+     WHERE user_id = $1
+     ORDER BY updated_at DESC LIMIT 1`,
+    [userId],
+  );
+
+  if (!result.rows[0] || !result.rows[0].messages?.length) {
+    return c.json({messages: [], source: 'db'});
+  }
+
+  const messages = result.rows[0].messages.slice(-10);
+
+  // Warm the cache for next time
+  cacheRecentMessages(userId, messages).catch(() => {});
+
+  return c.json({messages, sessionId: result.rows[0].id, source: 'db'});
+});
 
 chatRoutes.get('/sessions', async c => {
   const userId = c.get('userId');
@@ -80,6 +111,11 @@ chatRoutes.put('/sessions/:id', async c => {
     return c.json({message: 'Session not found'}, 404);
   }
 
+  // Write-through: update Redis cache with latest messages
+  if (messages !== undefined) {
+    cacheRecentMessages(userId, messages).catch(() => {});
+  }
+
   return c.json(result.rows[0]);
 });
 
@@ -95,6 +131,8 @@ chatRoutes.delete('/sessions/:id', async c => {
   if (result.rowCount === 0) {
     return c.json({message: 'Session not found'}, 404);
   }
+
+  clearRecentMessages(userId).catch(() => {});
 
   return c.json({message: 'Session deleted'});
 });

@@ -160,6 +160,7 @@ export const api = {
   getBillingStatus: () => request<any>('/billing/status'),
 
   // Chat
+  getRecentMessages: () => request<any>('/chat/recent'),
   getSessions: () => request<any>('/chat/sessions'),
   getSession: (id: string) => request<any>(`/chat/sessions/${id}`),
   createSession: () =>

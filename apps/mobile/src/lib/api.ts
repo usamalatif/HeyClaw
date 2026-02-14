@@ -81,7 +81,7 @@ export const api = {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email}),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({message: 'Server error. Please try again.'}));
     if (!res.ok) throw new Error(data.message || 'Failed to send code');
     return {isNewUser: data.is_new_user};
   },
@@ -92,7 +92,7 @@ export const api = {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({email, code}),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({message: 'Server error. Please try again.'}));
     if (!res.ok) throw new Error(data.message || 'Invalid code');
     return {
       accessToken: data.access_token,
@@ -113,7 +113,7 @@ export const api = {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(credentials),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({message: 'Server error. Please try again.'}));
     if (!res.ok) throw new Error(data.message || 'Apple Sign In failed');
     return {
       accessToken: data.access_token,

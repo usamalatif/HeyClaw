@@ -15,6 +15,12 @@ import {cronRoutes} from './routes/cron.js';
 
 const app = new Hono();
 
+// Global error handler — always return JSON
+app.onError((err, c) => {
+  console.error(`[ERROR] ${c.req.method} ${c.req.path}:`, err.message);
+  return c.json({message: 'Internal server error'}, 500);
+});
+
 // Middleware
 app.use('*', cors());
 app.use('*', logger());

@@ -14,6 +14,10 @@ if [ ! -f "$CONFIG_PATH" ]; then
       env: {
         OPENAI_API_KEY: process.env.OPENAI_API_KEY || ''
       },
+      session: {
+        dmScope: 'per-channel-peer',
+        scope: 'per-sender'
+      },
       models: {
         providers: {
           'openai-custom': {
@@ -21,8 +25,8 @@ if [ ! -f "$CONFIG_PATH" ]; then
             apiKey: process.env.OPENAI_API_KEY || '',
             api: 'openai-completions',
             models: [
-              { id: 'gpt-5-nano', name: 'GPT-5 Nano' },
-              { id: 'gpt-5-nano-2025-08-07', name: 'GPT-5 Nano (dated)' }
+              { id: 'gpt-5-nano', name: 'GPT-5 Nano', contextWindow: 128000, maxTokens: 8192 },
+              { id: 'gpt-5-nano-2025-08-07', name: 'GPT-5 Nano (dated)', contextWindow: 128000, maxTokens: 8192 }
             ]
           }
         }
@@ -48,17 +52,31 @@ if [ ! -f "$CONFIG_PATH" ]; then
       agents: {
         defaults: {
           model: { primary: 'openai-custom/gpt-5-nano', fallbacks: [] },
-          sandbox: { mode: 'off', workspaceAccess: 'rw' }
+          contextTokens: 64000,
+          timeoutSeconds: 120,
+          sandbox: { mode: 'all', scope: 'agent', workspaceAccess: 'rw' },
+          tools: {
+            deny: ['exec', 'process', 'browser', 'canvas', 'cron', 'nodes', 'gateway']
+          },
+          contextPruning: {
+            mode: 'adaptive',
+            keepLastAssistants: 3,
+            softTrimRatio: 0.7,
+            hardClearRatio: 0.85
+          }
         },
         list: []
       },
       bindings: [],
+      channels: {
+        webchat: { enabled: true }
+      },
       cron: { enabled: true, maxConcurrentRuns: 1 },
       hooks: { enabled: false }
     };
     require('fs').writeFileSync('$CONFIG_PATH', JSON.stringify(config, null, 2));
   "
-  echo "Config generated with token from OPENCLAW_GATEWAY_TOKEN env"
+  echo "Config generated with session isolation + context pruning"
 fi
 
 echo "Starting OpenClaw shared gateway..."

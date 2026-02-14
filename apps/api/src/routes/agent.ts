@@ -141,29 +141,51 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
       let sentenceIndex = 0;
       let fullText = '';
 
-      // TTS queue with proper completion tracking
-      const ttsPromises: Promise<void>[] = [];
+      // TTS queue - process IN ORDER (sequential)
+      const ttsQueue: {sentence: string; index: number}[] = [];
+      let ttsProcessing = false;
+      let ttsResolve: (() => void) | null = null;
 
-      const queueTTS = async (sentence: string, index: number) => {
-        const promise = (async () => {
+      const processTTSInOrder = async () => {
+        if (ttsProcessing) return;
+        ttsProcessing = true;
+
+        while (ttsQueue.length > 0) {
+          const item = ttsQueue.shift()!;
           try {
-            const audio = await chunkToSpeech(sentence, ttsVoice);
+            const audio = await chunkToSpeech(item.sentence, ttsVoice);
             if (audio) {
               await stream.writeSSE({
-                data: JSON.stringify({type: 'audio', data: audio, index}),
+                data: JSON.stringify({type: 'audio', data: audio, index: item.index}),
                 event: 'chunk',
               });
             }
           } catch (err: any) {
             console.error('[TTS] chunk failed:', err.message);
           }
-        })();
-        ttsPromises.push(promise);
+        }
+
+        ttsProcessing = false;
+        if (ttsResolve) ttsResolve();
+      };
+
+      const queueTTS = (sentence: string, index: number) => {
+        ttsQueue.push({sentence, index});
+        // Start processing if not already running
+        processTTSInOrder();
       };
 
       const waitForTTS = async () => {
-        // Wait for all queued TTS to complete
-        await Promise.all(ttsPromises);
+        // If still processing or items in queue, wait
+        if (ttsProcessing || ttsQueue.length > 0) {
+          await new Promise<void>(resolve => {
+            ttsResolve = resolve;
+            // Check again in case it finished between check and promise creation
+            if (!ttsProcessing && ttsQueue.length === 0) {
+              resolve();
+            }
+          });
+        }
       };
 
       const flushSentences = async (force: boolean) => {
@@ -220,7 +242,7 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
 
       // Wait for ALL TTS audio to complete before ending stream
       if (!nativeTts) {
-        console.log('[Voice] Waiting for', ttsPromises.length, 'TTS chunks to complete...');
+        console.log('[Voice] Waiting for TTS to complete...');
         await waitForTTS();
         console.log('[Voice] All TTS complete');
       }

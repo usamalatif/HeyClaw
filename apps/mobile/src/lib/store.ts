@@ -4,7 +4,7 @@ interface UserProfile {
   id: string;
   email: string;
   name: string | null;
-  plan: 'free' | 'pro' | 'premium';
+  plan: 'free' | 'starter' | 'pro' | 'premium';
   agentName: string;
   voice: string;
   dailyMessagesUsed: number;

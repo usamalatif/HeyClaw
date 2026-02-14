@@ -44,7 +44,7 @@ export default function HomeScreen() {
   const {processVoiceInput, cancel} = useVoiceFlow();
   const recordingStartRef = useRef<number>(0);
 
-  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
+  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 5);
 
   const getStatusText = () => {
     if (isRecording) return 'Listening...';
@@ -94,7 +94,7 @@ export default function HomeScreen() {
       {/* Usage display */}
       <View style={styles.header}>
         <Text style={styles.usage}>
-          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50} msgs{'  '}
+          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 5} msgs{'  '}
           {((profile?.dailyVoiceSeconds ?? 0) / 60).toFixed(1)}/{Math.round((profile?.dailyVoiceLimit ?? 300) / 60)} min
         </Text>
       </View>

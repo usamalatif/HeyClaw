@@ -66,10 +66,10 @@ export function decodeNotification(signedPayload: string): Record<string, any> |
 // Map product ID to plan name
 export function getProductPlan(productId: string): string {
   const mapping: Record<string, string> = {
+    'com.heyclaw.starter.monthly': 'starter',
     'com.heyclaw.pro.monthly': 'pro',
     'com.heyclaw.premium.monthly': 'premium',
-    // Legacy product IDs for existing subscribers
-    'com.heyclaw.starter.monthly': 'pro',
+    // Legacy product ID for existing subscribers
     'com.heyclaw.ultra.monthly': 'premium',
   };
 

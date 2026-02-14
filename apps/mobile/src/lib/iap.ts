@@ -17,10 +17,10 @@ import {api} from './api';
 import {useAuthStore} from './store';
 
 const PRODUCT_IDS = [
+  'com.heyclaw.starter.monthly',
   'com.heyclaw.pro.monthly',
   'com.heyclaw.premium.monthly',
-  // Legacy IDs (still accepted by backend)
-  'com.heyclaw.starter.monthly',
+  // Legacy ID (still accepted by backend)
   'com.heyclaw.ultra.monthly',
 ];
 

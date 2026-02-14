@@ -45,27 +45,35 @@ CREATE TABLE plan_limits (
 INSERT INTO plan_limits VALUES
 (
     'free', 'Free',
-    1, 50,
+    1, 5,
     2.00, 2.00, 5000,
     'openai-custom/gpt-5-nano', 'tts-1',
     ARRAY['nova', 'alloy'],
     0.00, 0.00
 ),
 (
+    'starter', 'Starter',
+    1, 200,
+    15.00, 15.00, 20000,
+    'openai-custom/gpt-5-nano', 'tts-1',
+    ARRAY['nova', 'alloy', 'echo', 'fable'],
+    19.99, 0.00
+),
+(
     'pro', 'Pro',
-    5, 500,
-    30.00, 30.00, 50000,
+    5, 1000,
+    60.00, 60.00, 100000,
     'openai-custom/gpt-5-nano', 'tts-1',
     ARRAY['nova', 'alloy', 'echo', 'fable', 'onyx', 'shimmer'],
-    6.99, 69.99
+    60.99, 0.00
 ),
 (
     'premium', 'Premium',
-    20, 2000,
-    120.00, 120.00, 200000,
+    20, 999999,
+    240.00, 240.00, 500000,
     'openai-custom/gpt-5-nano', 'tts-1-hd',
     ARRAY['nova', 'alloy', 'echo', 'fable', 'onyx', 'shimmer'],
-    12.99, 129.99
+    149.99, 0.00
 );
 
 -- ═══════════════════════════════════════════════════════════

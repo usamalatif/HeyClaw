@@ -138,7 +138,7 @@ export default function SettingsScreen() {
         <View style={styles.row}>
           <Text style={styles.label}>Messages Today</Text>
           <Text style={styles.valueHighlight}>
-            {profile?.dailyMessagesUsed ?? 0} / {profile?.dailyMessagesLimit ?? 50}
+            {profile?.dailyMessagesUsed ?? 0} / {profile?.dailyMessagesLimit ?? 5}
           </Text>
         </View>
         <View style={[styles.row, styles.rowLast]}>

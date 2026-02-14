@@ -222,7 +222,7 @@ export default function ChatScreen() {
     }, [messages.length, scrollToBottom]),
   );
 
-  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
+  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 5);
   const [showPaywall, setShowPaywall] = useState(false);
 
   // Load recent messages (Redis-cached) then ensure session exists
@@ -347,7 +347,7 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>HeyClaw</Text>
         <Text style={styles.headerCredits}>
-          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50}
+          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 5}
         </Text>
       </View>
 

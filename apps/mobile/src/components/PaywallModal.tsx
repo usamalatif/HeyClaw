@@ -17,19 +17,26 @@ interface PaywallModalProps {
 
 const PLANS = [
   {
+    sku: 'com.heyclaw.starter.monthly',
+    name: 'Starter',
+    price: '$19.99/mo',
+    highlight: '200 messages/day',
+    features: ['200 messages per day', '15 min voice/day', '4 voice options', 'Chat history'],
+  },
+  {
     sku: 'com.heyclaw.pro.monthly',
     name: 'Pro',
-    price: '$9.99/mo',
-    highlight: '500 messages/day',
+    price: '$60.99/mo',
+    highlight: '1,000 messages/day',
     badge: 'Popular',
-    features: ['500 messages per day', '30 min voice/day', 'Premium voices', 'Chat history'],
+    features: ['1,000 messages per day', '60 min voice/day', 'All voices', 'Priority support'],
   },
   {
     sku: 'com.heyclaw.premium.monthly',
     name: 'Premium',
-    price: '$29.99/mo',
-    highlight: '2,000 messages/day',
-    features: ['2,000 messages per day', '120 min voice/day', 'All premium features', 'Priority support'],
+    price: '$149.99/mo',
+    highlight: 'Unlimited messages',
+    features: ['Unlimited messages/day', '240 min voice/day', 'HD voice quality', 'Priority support'],
   },
 ];
 
@@ -71,7 +78,7 @@ export default function PaywallModal({visible, onClose}: PaywallModalProps) {
 
         <View style={styles.freeTier}>
           <Text style={styles.freeLabel}>Free Plan</Text>
-          <Text style={styles.freeDetail}>50 messages/day · 5 min voice/day</Text>
+          <Text style={styles.freeDetail}>5 messages/day · 2 min voice/day</Text>
         </View>
 
         {error && (

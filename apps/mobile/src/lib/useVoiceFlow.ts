@@ -167,6 +167,16 @@ export function useVoiceFlow() {
         };
 
         xhr.onload = () => {
+          if (xhr.status === 429) {
+            xhrRef.current = null;
+            try {
+              const err = JSON.parse(xhr.responseText);
+              reject(new Error(err.message || 'Limit reached'));
+            } catch {
+              reject(new Error('Daily limit reached'));
+            }
+            return;
+          }
           // Process any remaining buffer
           if (buffer.trim()) {
             handleSSELine(buffer, fullTextRef);
@@ -230,6 +240,9 @@ export function useVoiceFlow() {
         }
       } catch (err: any) {
         console.error('Voice flow error:', err.message);
+        if (err.message?.includes('limit')) {
+          setLastResponse(err.message);
+        }
         setProcessing(false);
         setPlaying(false);
       }

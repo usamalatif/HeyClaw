@@ -89,6 +89,12 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
     return c.json({message: 'Daily message limit reached. Upgrade your plan.'}, 429);
   }
 
+  // Check daily voice limit
+  const canVoice = await checkLimit(userId, 'voice_seconds');
+  if (!canVoice) {
+    return c.json({message: 'Daily voice limit reached. Upgrade your plan.'}, 429);
+  }
+
   const agentId = await getAgentId(userId);
 
   // Get user's TTS voice preference

@@ -77,7 +77,7 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
 // Streaming voice endpoint — SSE with text + audio chunks
 agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
   const userId = c.get('userId');
-  const {text, voice, nativeTts = false} = await c.req.json();
+  const {text, voice, nativeTts = false, recordingDuration = 0} = await c.req.json();
 
   if (!text?.trim()) {
     return c.json({message: 'Message text is required'}, 400);
@@ -201,6 +201,13 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
       // Increment usage
       await incrementUsage(userId, 'text_messages', 1);
 
+      // Track voice seconds from recording duration
+      const voiceSec = Math.max(0, Math.ceil(Number(recordingDuration) || 0));
+      if (voiceSec > 0) {
+        await incrementUsage(userId, 'voice_seconds', voiceSec);
+        console.log(`[Voice] userId=${userId} recorded ${voiceSec}s — incrementing voice_seconds`);
+      }
+
       // Update assistant activity
       await db.query(
         `UPDATE assistants SET last_active_at = NOW(), message_count = message_count + 1
@@ -225,6 +232,7 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
           usage: {
             messagesUsed: usage.text_messages + 1,
             messagesLimit: limits.daily_text_messages,
+            voiceSecondsUsed: usage.voice_input_seconds + voiceSec,
           },
           fullText,
         }),

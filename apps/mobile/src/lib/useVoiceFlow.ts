@@ -103,7 +103,8 @@ export function useVoiceFlow() {
           case 'done': {
             // Update usage display
             if (event.usage) {
-              updateUsage(event.usage.messagesUsed, event.usage.messagesLimit);
+              updateUsage(event.usage.messagesUsed, event.usage.messagesLimit, event.usage.voiceSecondsUsed);
+              console.log('[Voice] Usage update — msgs:', event.usage.messagesUsed, '/', event.usage.messagesLimit, 'voice_sec:', event.usage.voiceSecondsUsed);
             }
             setProcessing(false);
             const agentName = useAuthStore.getState().profile?.agentName;
@@ -126,7 +127,7 @@ export function useVoiceFlow() {
   // Process SSE stream from /agent/voice using XMLHttpRequest
   // (React Native's fetch doesn't support ReadableStream)
   const streamAgentResponse = useCallback(
-    (transcribedText: string): Promise<void> => {
+    (transcribedText: string, recordingDuration?: number): Promise<void> => {
       return new Promise(async (resolve, reject) => {
         const token = await getAccessToken();
 
@@ -187,6 +188,7 @@ export function useVoiceFlow() {
         xhr.send(
           JSON.stringify({
             text: transcribedText,
+            recordingDuration: recordingDuration || 0,
           }),
         );
       });
@@ -196,7 +198,7 @@ export function useVoiceFlow() {
 
   // Main voice flow: receives transcribed text directly (from on-device recognition)
   const processVoiceInput = useCallback(
-    async (transcribedText: string) => {
+    async (transcribedText: string, recordingDuration?: number) => {
       try {
         setRecording(false);
         setProcessing(true);
@@ -214,7 +216,7 @@ export function useVoiceFlow() {
 
         // Stream agent response with ElevenLabs TTS
         // Processing stays true until first token arrives (handled in handleSSELine)
-        await streamAgentResponse(transcribedText);
+        await streamAgentResponse(transcribedText, recordingDuration);
 
         // Add assistant response to chat history
         const finalResponse = useVoiceStore.getState().lastResponse;

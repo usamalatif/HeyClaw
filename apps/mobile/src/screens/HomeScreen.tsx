@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useRef} from 'react';
 import {
   View,
   Text,
@@ -42,6 +42,7 @@ export default function HomeScreen() {
     useVoiceStore();
   const setRecording = useVoiceStore(s => s.setRecording);
   const {processVoiceInput, cancel} = useVoiceFlow();
+  const recordingStartRef = useRef<number>(0);
 
   const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 50);
 
@@ -57,6 +58,7 @@ export default function HomeScreen() {
   const handlePressIn = async () => {
     try {
       setLastTranscription(null);
+      recordingStartRef.current = Date.now();
       await startSpeechRecognition((partialText) => {
         setLastTranscription(partialText);
       });
@@ -71,8 +73,10 @@ export default function HomeScreen() {
     try {
       const transcribedText = await stopSpeechRecognition();
       setRecording(false);
+      const durationSec = Math.max(1, Math.ceil((Date.now() - recordingStartRef.current) / 1000));
+      console.log('[Voice] Recording duration:', durationSec, 'seconds');
       if (transcribedText?.trim()) {
-        processVoiceInput(transcribedText.trim());
+        processVoiceInput(transcribedText.trim(), durationSec);
       }
     } catch (err) {
       console.error('Failed to stop speech recognition:', err);
@@ -91,7 +95,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <Text style={styles.usage}>
           {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50} msgs{'  '}
-          {Math.floor((profile?.dailyVoiceSeconds ?? 0) / 60)}/{Math.floor((profile?.dailyVoiceLimit ?? 300) / 60)} min
+          {((profile?.dailyVoiceSeconds ?? 0) / 60).toFixed(1)}/{Math.round((profile?.dailyVoiceLimit ?? 300) / 60)} min
         </Text>
       </View>
 

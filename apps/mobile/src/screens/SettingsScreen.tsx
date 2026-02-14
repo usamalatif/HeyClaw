@@ -144,7 +144,7 @@ export default function SettingsScreen() {
         <View style={[styles.row, styles.rowLast]}>
           <Text style={styles.label}>Voice Today</Text>
           <Text style={styles.valueHighlight}>
-            {Math.floor((profile?.dailyVoiceSeconds ?? 0) / 60)} / {Math.floor((profile?.dailyVoiceLimit ?? 300) / 60)} min
+            {((profile?.dailyVoiceSeconds ?? 0) / 60).toFixed(1)} / {Math.round((profile?.dailyVoiceLimit ?? 300) / 60)} min
           </Text>
         </View>
       </View>

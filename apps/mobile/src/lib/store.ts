@@ -22,7 +22,7 @@ interface AuthState {
   setProfileLoading: (loading: boolean) => void;
   setIsNewUser: (isNew: boolean) => void;
   setProfile: (profile: UserProfile | null) => void;
-  updateUsage: (messagesUsed: number, messagesLimit: number) => void;
+  updateUsage: (messagesUsed: number, messagesLimit: number, voiceSecondsUsed?: number) => void;
 }
 
 export const useAuthStore = create<AuthState>(set => ({
@@ -34,10 +34,15 @@ export const useAuthStore = create<AuthState>(set => ({
   setProfileLoading: profileLoading => set({profileLoading}),
   setIsNewUser: isNewUser => set({isNewUser}),
   setProfile: profile => set({profile}),
-  updateUsage: (messagesUsed, messagesLimit) =>
+  updateUsage: (messagesUsed, messagesLimit, voiceSecondsUsed) =>
     set(state => ({
       profile: state.profile
-        ? {...state.profile, dailyMessagesUsed: messagesUsed, dailyMessagesLimit: messagesLimit}
+        ? {
+            ...state.profile,
+            dailyMessagesUsed: messagesUsed,
+            dailyMessagesLimit: messagesLimit,
+            ...(voiceSecondsUsed !== undefined ? {dailyVoiceSeconds: voiceSecondsUsed} : {}),
+          }
         : null,
     })),
 }));

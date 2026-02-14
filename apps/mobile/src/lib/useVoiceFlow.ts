@@ -7,7 +7,7 @@ import {
   clearPreparedAudio,
   stopPlayback,
 } from './audio';
-import {notifyResponseReady} from './notifications';
+import {notifyResponseReady, scheduleReminder} from './notifications';
 import {API_URL} from './config';
 
 // Full voice conversation flow:
@@ -100,7 +100,27 @@ export function useVoiceFlow() {
             }
             break;
 
+          case 'action': {
+            // Handle agent-triggered device actions
+            if (event.action === 'reminder' && event.params?.length >= 3) {
+              const delaySeconds = parseInt(event.params[0], 10);
+              const title = event.params[1];
+              const body = event.params[2];
+              if (!isNaN(delaySeconds) && delaySeconds > 0) {
+                scheduleReminder(title, body, delaySeconds).catch(err => {
+                  console.error('[Action] Failed to schedule reminder:', err);
+                });
+              }
+            }
+            break;
+          }
+
           case 'done': {
+            // Replace streamed text with cleaned version from server
+            if (event.fullText) {
+              fullTextRef.value = event.fullText;
+              setLastResponse(event.fullText.trim());
+            }
             // Update usage display
             if (event.usage) {
               updateUsage(event.usage.messagesUsed, event.usage.messagesLimit, event.usage.voiceSecondsUsed);

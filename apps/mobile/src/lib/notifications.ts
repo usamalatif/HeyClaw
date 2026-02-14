@@ -1,4 +1,4 @@
-import notifee, {AuthorizationStatus} from '@notifee/react-native';
+import notifee, {AuthorizationStatus, TriggerType, type TimestampTrigger} from '@notifee/react-native';
 import {AppState, AppStateStatus} from 'react-native';
 
 // Module-level app state tracking (not Zustand — no UI depends on this)
@@ -62,4 +62,43 @@ export async function notifyAutomationResult(
       },
     },
   });
+}
+
+// Schedule a local notification to fire after a delay
+export async function scheduleReminder(
+  title: string,
+  body: string,
+  delaySeconds: number,
+): Promise<void> {
+  const hasPermission = await requestNotificationPermission();
+  if (!hasPermission) {
+    console.warn('[Reminder] Notification permission not granted');
+    return;
+  }
+
+  const fireDate = new Date(Date.now() + delaySeconds * 1000);
+
+  const trigger: TimestampTrigger = {
+    type: TriggerType.TIMESTAMP,
+    timestamp: fireDate.getTime(),
+  };
+
+  await notifee.createTriggerNotification(
+    {
+      title,
+      body,
+      ios: {
+        sound: 'default',
+        foregroundPresentationOptions: {
+          badge: true,
+          sound: true,
+          banner: true,
+          list: true,
+        },
+      },
+    },
+    trigger,
+  );
+
+  console.log(`[Reminder] Scheduled "${title}" in ${delaySeconds}s (at ${fireDate.toISOString()})`);
 }

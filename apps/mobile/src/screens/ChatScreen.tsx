@@ -16,6 +16,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {useAuthStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
 import PaywallModal from '../components/PaywallModal';
+import {scheduleReminder} from '../lib/notifications';
 
 // Renders text with **bold** markdown support
 function FormattedText({
@@ -279,7 +280,11 @@ export default function ChatScreen() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || loading || !hasMessages) return;
+    if (!text || loading) return;
+    if (!hasMessages) {
+      setShowPaywall(true);
+      return;
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -297,6 +302,20 @@ export default function ChatScreen() {
       setIsWaiting(false);
       if (res.usage) {
         updateUsage(res.usage.messagesUsed, res.usage.messagesLimit);
+      }
+
+      // Handle any actions returned by the agent (e.g. reminders)
+      if (res.actions?.length > 0) {
+        for (const action of res.actions) {
+          if (action.type === 'reminder' && action.params?.length >= 3) {
+            const delaySeconds = parseInt(action.params[0], 10);
+            if (!isNaN(delaySeconds) && delaySeconds > 0) {
+              scheduleReminder(action.params[1], action.params[2], delaySeconds).catch(err => {
+                console.error('[Action] Failed to schedule reminder:', err);
+              });
+            }
+          }
+        }
       }
 
       const fullText: string = res.response;
@@ -330,6 +349,9 @@ export default function ChatScreen() {
       }, 12);
     } catch (err: any) {
       setIsWaiting(false);
+      if (/limit/i.test(err.message)) {
+        setShowPaywall(true);
+      }
       useChatStore.getState().addMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -431,7 +453,7 @@ export default function ChatScreen() {
         <TouchableOpacity
           style={[styles.sendButton, !hasMessages && styles.sendButtonDisabled]}
           onPress={sendMessage}
-          disabled={loading || !hasMessages}>
+          disabled={loading}>
           <Text style={styles.sendButtonText}>
             {loading ? '...' : '\u2191'}
           </Text>

@@ -1,4 +1,4 @@
-import React, {useState, useRef} from 'react';
+import React, {useState, useRef, useEffect} from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,10 @@ export default function HomeScreen() {
   const setLastTranscription = useVoiceStore(s => s.setLastTranscription);
 
   const handlePressIn = async () => {
+    if (!hasMessages) {
+      setShowPaywall(true);
+      return;
+    }
     try {
       setLastTranscription(null);
       recordingStartRef.current = Date.now();
@@ -88,6 +92,13 @@ export default function HomeScreen() {
   const handleStopPress = () => {
     cancel();
   };
+
+  // Auto-show paywall when voice flow returns a limit error
+  useEffect(() => {
+    if (lastResponse && /limit/i.test(lastResponse)) {
+      setShowPaywall(true);
+    }
+  }, [lastResponse]);
 
   return (
     <View style={styles.container}>
@@ -155,7 +166,6 @@ export default function HomeScreen() {
               isRecording && styles.voiceButtonRecording,
               !hasMessages && styles.voiceButtonDisabled,
             ]}
-            disabled={!hasMessages}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}>
             <Text style={styles.voiceButtonText}>

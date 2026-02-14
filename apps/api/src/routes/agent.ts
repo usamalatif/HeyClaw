@@ -10,6 +10,28 @@ import {checkLimit, incrementUsage} from '../services/usage.js';
 import {agentExists} from '../services/agentManager.js';
 import {cacheRecentMessages, getCachedRecentMessages} from '../db/redis.js';
 
+// Parse action markers from agent response text
+// Format: <!--action:TYPE|PARAM1|PARAM2|...-->
+interface ParsedAction {
+  type: string;
+  params: string[];
+}
+
+function parseActions(text: string): { cleanText: string; actions: ParsedAction[] } {
+  const actions: ParsedAction[] = [];
+  const cleanText = text.replace(/<!--action:([^>]+)-->/g, (_match, content: string) => {
+    const parts = content.split('|');
+    const type = parts[0];
+    const params = parts.slice(1);
+    if (type) {
+      actions.push({ type, params });
+    }
+    return '';
+  }).trim();
+
+  return { cleanText, actions };
+}
+
 // Look up the user's active assistant's agent_id
 async function getAgentId(userId: string): Promise<string> {
   const result = await db.query(
@@ -44,6 +66,9 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
 
   const response = await sendToOpenClaw(agentId, [{role: 'user', content: text}]);
 
+  // Parse and strip action markers
+  const { cleanText, actions } = parseActions(response);
+
   // Increment usage
   await incrementUsage(userId, 'text_messages', 1);
 
@@ -54,11 +79,11 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
     [agentId],
   );
 
-  // Write-through: append to Redis recent messages cache
+  // Write-through: append to Redis recent messages cache (clean text)
   const cached = await getCachedRecentMessages(userId) || [];
   cached.push(
     {id: Date.now().toString(), role: 'user', content: text},
-    {id: (Date.now() + 1).toString(), role: 'assistant', content: response},
+    {id: (Date.now() + 1).toString(), role: 'assistant', content: cleanText},
   );
   cacheRecentMessages(userId, cached).catch(() => {});
 
@@ -66,7 +91,8 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
   const usage = c.get('usage');
 
   return c.json({
-    response,
+    response: cleanText,
+    actions,
     usage: {
       messagesUsed: usage.text_messages + 1,
       messagesLimit: limits.daily_text_messages,
@@ -208,13 +234,27 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         await waitForTTS();
       }
 
+      // Parse action markers from the full agent response
+      const { cleanText, actions } = parseActions(fullText);
+
+      // Send action events to the client before 'done'
+      for (const action of actions) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: 'action',
+            action: action.type,
+            params: action.params,
+          }),
+          event: 'chunk',
+        });
+      }
+
       // Increment usage
       await incrementUsage(userId, 'text_messages', 1);
 
-      // Track voice seconds: recording input + estimated TTS reply duration
-      // TTS speaks ~150 words/min ≈ 2.5 words/sec
+      // Track voice seconds using cleanText (without markers)
       const inputSec = Math.max(0, Math.ceil(Number(recordingDuration) || 0));
-      const wordCount = fullText.trim().split(/\s+/).length;
+      const wordCount = cleanText.trim().split(/\s+/).length;
       const replySec = Math.ceil(wordCount / 2.5);
       const totalVoiceSec = inputSec + replySec;
       if (totalVoiceSec > 0) {
@@ -229,11 +269,11 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         [agentId],
       );
 
-      // Write-through: append to Redis recent messages cache
+      // Write-through: append clean text to Redis cache
       const cached = await getCachedRecentMessages(userId) || [];
       cached.push(
         {id: Date.now().toString(), role: 'user', content: text, isVoice: true},
-        {id: (Date.now() + 1).toString(), role: 'assistant', content: fullText, isVoice: true},
+        {id: (Date.now() + 1).toString(), role: 'assistant', content: cleanText, isVoice: true},
       );
       cacheRecentMessages(userId, cached).catch(() => {});
 
@@ -248,7 +288,7 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
             messagesLimit: limits.daily_text_messages,
             voiceSecondsUsed: usage.voice_input_seconds + totalVoiceSec,
           },
-          fullText,
+          fullText: cleanText,
         }),
         event: 'chunk',
       });

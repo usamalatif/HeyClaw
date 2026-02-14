@@ -305,14 +305,19 @@ export default function ChatScreen() {
       }
 
       // Handle any actions returned by the agent (e.g. reminders)
+      console.log('[Chat] Response actions:', res.actions?.length ?? 0, res.actions ? JSON.stringify(res.actions) : '');
       if (res.actions?.length > 0) {
         for (const action of res.actions) {
+          console.log('[Chat] Processing action:', action.type, action.params);
           if (action.type === 'reminder' && action.params?.length >= 3) {
             const delaySeconds = parseInt(action.params[0], 10);
+            console.log('[Chat] Scheduling reminder:', {delay: delaySeconds, title: action.params[1], body: action.params[2]});
             if (!isNaN(delaySeconds) && delaySeconds > 0) {
-              scheduleReminder(action.params[1], action.params[2], delaySeconds).catch(err => {
-                console.error('[Action] Failed to schedule reminder:', err);
-              });
+              scheduleReminder(action.params[1], action.params[2], delaySeconds)
+                .then(() => console.log('[Chat] Reminder scheduled successfully'))
+                .catch(err => {
+                  console.error('[Chat] Failed to schedule reminder:', err);
+                });
             }
           }
         }

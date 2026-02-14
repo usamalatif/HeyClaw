@@ -40,7 +40,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    completionHandler([])
+    // Show banner, sound, and badge even when app is in foreground
+    completionHandler([.banner, .sound, .badge, .list])
   }
 
   func userNotificationCenter(

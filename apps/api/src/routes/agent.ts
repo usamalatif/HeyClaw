@@ -19,7 +19,9 @@ interface ParsedAction {
 
 function parseActions(text: string): { cleanText: string; actions: ParsedAction[] } {
   const actions: ParsedAction[] = [];
+  console.log('[parseActions] Raw text (last 200 chars):', text.slice(-200));
   const cleanText = text.replace(/<!--action:([^>]+)-->/g, (_match, content: string) => {
+    console.log('[parseActions] Found marker:', content);
     const parts = content.split('|');
     const type = parts[0];
     const params = parts.slice(1);
@@ -29,6 +31,7 @@ function parseActions(text: string): { cleanText: string; actions: ParsedAction[
     return '';
   }).trim();
 
+  console.log('[parseActions] Actions found:', actions.length, actions.length > 0 ? JSON.stringify(actions) : '(none)');
   return { cleanText, actions };
 }
 
@@ -235,10 +238,13 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
       }
 
       // Parse action markers from the full agent response
+      console.log('[Voice] Full agent response length:', fullText.length);
       const { cleanText, actions } = parseActions(fullText);
 
       // Send action events to the client before 'done'
+      console.log('[Voice] Sending', actions.length, 'action events to client');
       for (const action of actions) {
+        console.log('[Voice] Sending action SSE:', JSON.stringify(action));
         await stream.writeSSE({
           data: JSON.stringify({
             type: 'action',

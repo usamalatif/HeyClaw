@@ -27,8 +27,7 @@ cat > /root/.openclaw/openclaw.json << EOF
     }
   },
   "cron": {
-    "enabled": true,
-    "maxConcurrentRuns": 1
+    "enabled": false
   },
   "hooks": {
     "enabled": true,
@@ -38,6 +37,9 @@ cat > /root/.openclaw/openclaw.json << EOF
     "defaults": {
       "model": {
         "primary": "${OPENCLAW_MODEL:-openai-custom/gpt-5-nano}"
+      },
+      "tools": {
+        "deny": ["cron"]
       }
     }
   },

@@ -67,6 +67,9 @@ export function useVoiceFlow() {
 
       try {
         const event = JSON.parse(jsonStr);
+        if (event.type !== 'token') {
+          console.log('[SSE] Event received:', event.type, event.type === 'action' ? JSON.stringify(event) : '');
+        }
 
         // Turn off "processing" animation once first real data arrives
         if (!receivedFirstChunkRef.current && (event.type === 'token' || event.type === 'text' || event.type === 'audio')) {
@@ -102,15 +105,23 @@ export function useVoiceFlow() {
 
           case 'action': {
             // Handle agent-triggered device actions
+            console.log('[Action] Received action event:', event.action, 'params:', event.params);
             if (event.action === 'reminder' && event.params?.length >= 3) {
               const delaySeconds = parseInt(event.params[0], 10);
               const title = event.params[1];
               const body = event.params[2];
+              console.log('[Action] Scheduling reminder:', {delaySeconds, title, body});
               if (!isNaN(delaySeconds) && delaySeconds > 0) {
-                scheduleReminder(title, body, delaySeconds).catch(err => {
-                  console.error('[Action] Failed to schedule reminder:', err);
-                });
+                scheduleReminder(title, body, delaySeconds)
+                  .then(() => console.log('[Action] Reminder scheduled successfully'))
+                  .catch(err => {
+                    console.error('[Action] Failed to schedule reminder:', err);
+                  });
+              } else {
+                console.warn('[Action] Invalid delay:', event.params[0]);
               }
+            } else {
+              console.warn('[Action] Unhandled action or insufficient params:', event.action, event.params?.length);
             }
             break;
           }

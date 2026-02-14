@@ -1,54 +1,54 @@
 {
-  "gateway": {
-    "bind": "127.0.0.1",
-    "port": 18789,
-    "auth": {
-      "mode": "token",
-      "token": "GENERATE_SECURE_TOKEN_64_CHARS"
-    }
-  },
-  "session": {
-    "dmScope": "per-channel-peer",
-    "scope": "per-sender"
-  },
-  "models": {
-    "providers": {
-      "openai-custom": {
-        "baseUrl": "https://api.openai.com/v1",
-        "apiKey": "${OPENAI_API_KEY}",
-        "api": "openai",
-        "models": [
-          {
-            "id": "gpt-5-nano",
-            "name": "GPT-5 Nano",
-            "contextWindow": 128000,
-            "maxTokens": 8192
-          }
-        ]
-      }
-    }
-  },
-  "tools": {
-    "deny": ["exec", "process", "browser", "canvas", "cron", "nodes", "gateway"]
-  },
-  "agents": {
-    "defaults": {
-      "model": {
-        "primary": "openai-custom/gpt-5-nano"
-      },
-      "sandbox": {
-        "mode": "off",
-        "workspaceAccess": "rw"
-      }
-    },
-    "list": []
-  },
-  "bindings": [],
-  "cron": {
-    "enabled": true,
-    "maxConcurrentRuns": 1
-  },
-  "hooks": {
-    "enabled": false
-  }
+	"gateway": {
+		"bind": "127.0.0.1",
+		"port": 18789,
+		"auth": {
+			"mode": "token",
+			"token": "GENERATE_SECURE_TOKEN_64_CHARS"
+		}
+	},
+	"session": {
+		"dmScope": "per-channel-peer",
+		"scope": "per-sender"
+	},
+	"models": {
+		"providers": {
+			"openai-custom": {
+				"baseUrl": "https://api.openai.com/v1",
+				"apiKey": "${OPENAI_API_KEY}",
+				"api": "openai",
+				"models": [
+					{
+						"id": "gpt-5-nano",
+						"name": "GPT-5 Nano",
+						"contextWindow": 128000,
+						"maxTokens": 8192
+					}
+				]
+			}
+		}
+	},
+	"tools": {
+		"deny": ["gateway"]
+	},
+	"agents": {
+		"defaults": {
+			"model": {
+				"primary": "openai-custom/gpt-5-nano"
+			},
+			"sandbox": {
+				"mode": "off",
+				"workspaceAccess": "rw"
+			}
+		},
+		"list": []
+	},
+	"bindings": [],
+	"cron": {
+		"enabled": true,
+		"maxConcurrentRuns": 1
+	},
+	"hooks": {
+		"enabled": false
+	}
 }

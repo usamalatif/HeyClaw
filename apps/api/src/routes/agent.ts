@@ -201,11 +201,15 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
       // Increment usage
       await incrementUsage(userId, 'text_messages', 1);
 
-      // Track voice seconds from recording duration
-      const voiceSec = Math.max(0, Math.ceil(Number(recordingDuration) || 0));
-      if (voiceSec > 0) {
-        await incrementUsage(userId, 'voice_seconds', voiceSec);
-        console.log(`[Voice] userId=${userId} recorded ${voiceSec}s — incrementing voice_seconds`);
+      // Track voice seconds: recording input + estimated TTS reply duration
+      // TTS speaks ~150 words/min ≈ 2.5 words/sec
+      const inputSec = Math.max(0, Math.ceil(Number(recordingDuration) || 0));
+      const wordCount = fullText.trim().split(/\s+/).length;
+      const replySec = Math.ceil(wordCount / 2.5);
+      const totalVoiceSec = inputSec + replySec;
+      if (totalVoiceSec > 0) {
+        await incrementUsage(userId, 'voice_seconds', totalVoiceSec);
+        console.log(`[Voice] userId=${userId} input=${inputSec}s reply=${replySec}s (${wordCount} words) total=${totalVoiceSec}s`);
       }
 
       // Update assistant activity
@@ -232,7 +236,7 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
           usage: {
             messagesUsed: usage.text_messages + 1,
             messagesLimit: limits.daily_text_messages,
-            voiceSecondsUsed: usage.voice_input_seconds + voiceSec,
+            voiceSecondsUsed: usage.voice_input_seconds + totalVoiceSec,
           },
           fullText,
         }),

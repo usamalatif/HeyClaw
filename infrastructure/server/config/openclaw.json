@@ -28,26 +28,17 @@
       }
     }
   },
+  "tools": {
+    "deny": ["exec", "process", "browser", "canvas", "cron", "nodes", "gateway"]
+  },
   "agents": {
     "defaults": {
       "model": {
         "primary": "openai-custom/gpt-5-nano"
       },
-      "contextTokens": 64000,
-      "timeoutSeconds": 120,
       "sandbox": {
-        "mode": "all",
-        "scope": "agent",
+        "mode": "off",
         "workspaceAccess": "rw"
-      },
-      "tools": {
-        "deny": ["exec", "process", "browser", "canvas", "cron", "nodes", "gateway"]
-      },
-      "contextPruning": {
-        "mode": "adaptive",
-        "keepLastAssistants": 3,
-        "softTrimRatio": 0.7,
-        "hardClearRatio": 0.85
       }
     },
     "list": []

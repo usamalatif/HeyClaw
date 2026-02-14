@@ -49,21 +49,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
           }
         }
       },
+      tools: {
+        deny: ['exec', 'process', 'browser', 'canvas', 'cron', 'nodes', 'gateway']
+      },
       agents: {
         defaults: {
           model: { primary: 'openai-custom/gpt-5-nano', fallbacks: [] },
-          contextTokens: 64000,
-          timeoutSeconds: 120,
-          sandbox: { mode: 'all', scope: 'agent', workspaceAccess: 'rw' },
-          tools: {
-            deny: ['exec', 'process', 'browser', 'canvas', 'cron', 'nodes', 'gateway']
-          },
-          contextPruning: {
-            mode: 'adaptive',
-            keepLastAssistants: 3,
-            softTrimRatio: 0.7,
-            hardClearRatio: 0.85
-          }
+          sandbox: { mode: 'off', workspaceAccess: 'rw' }
         },
         list: []
       },
@@ -76,7 +68,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
     };
     require('fs').writeFileSync('$CONFIG_PATH', JSON.stringify(config, null, 2));
   "
-  echo "Config generated with session isolation + context pruning"
+  echo "Config generated with session isolation"
 fi
 
 echo "Starting OpenClaw shared gateway..."

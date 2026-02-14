@@ -115,17 +115,21 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         ttsRunning = true;
         while (ttsQueue.length > 0) {
           const batch = ttsQueue.splice(0, Math.min(3, ttsQueue.length));
-          const results = await Promise.all(
+          const results = await Promise.allSettled(
             batch.map(item =>
               chunkToSpeech(item.sentence, ttsVoice)
                 .then(audio => ({audio, index: item.index})),
             ),
           );
           for (const result of results) {
-            await stream.writeSSE({
-              data: JSON.stringify({type: 'audio', data: result.audio, index: result.index}),
-              event: 'chunk',
-            });
+            if (result.status === 'fulfilled') {
+              await stream.writeSSE({
+                data: JSON.stringify({type: 'audio', data: result.value.audio, index: result.value.index}),
+                event: 'chunk',
+              });
+            } else {
+              console.error('[TTS] chunk failed:', result.reason?.message || result.reason);
+            }
           }
         }
         ttsRunning = false;

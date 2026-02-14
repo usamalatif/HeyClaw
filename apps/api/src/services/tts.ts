@@ -22,6 +22,7 @@ export async function chunkToSpeech(
   voice: string = 'alloy',
 ): Promise<string> {
   const cleanText = stripMarkdown(text);
+  if (!cleanText) return '';
   const response = await openai.audio.speech.create({
     model: 'tts-1',
     voice: voice as any,

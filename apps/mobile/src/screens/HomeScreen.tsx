@@ -44,7 +44,7 @@ export default function HomeScreen() {
   const {processVoiceInput, cancel} = useVoiceFlow();
   const recordingStartRef = useRef<number>(0);
 
-  const hasMessages = (profile?.dailyMessagesUsed ?? 0) < (profile?.dailyMessagesLimit ?? 5);
+  const hasVoice = (profile?.dailyVoiceSeconds ?? 0) < (profile?.dailyVoiceLimit ?? 300);
 
   const getStatusText = () => {
     if (isRecording) return 'Listening...';
@@ -56,7 +56,7 @@ export default function HomeScreen() {
   const setLastTranscription = useVoiceStore(s => s.setLastTranscription);
 
   const handlePressIn = async () => {
-    if (!hasMessages) {
+    if (!hasVoice) {
       setShowPaywall(true);
       return;
     }
@@ -164,7 +164,7 @@ export default function HomeScreen() {
               styles.voiceButton,
               pressed && styles.voiceButtonPressed,
               isRecording && styles.voiceButtonRecording,
-              !hasMessages && styles.voiceButtonDisabled,
+              !hasVoice && styles.voiceButtonDisabled,
             ]}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}>
@@ -174,7 +174,7 @@ export default function HomeScreen() {
           </Pressable>
         )}
 
-        {!hasMessages && (
+        {!hasVoice && (
           <TouchableOpacity onPress={() => setShowPaywall(true)}>
             <Text style={styles.noMessages}>
               Daily limit reached. Tap to upgrade.

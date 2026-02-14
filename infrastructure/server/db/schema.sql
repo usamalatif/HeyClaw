@@ -13,6 +13,7 @@ CREATE TABLE users (
     password_hash   VARCHAR(255) NOT NULL,
     name            VARCHAR(100),
     avatar_url      VARCHAR(500),
+    apple_user_id   VARCHAR(255) UNIQUE,
     status          VARCHAR(20) DEFAULT 'active',
     email_verified  BOOLEAN DEFAULT FALSE,
     last_login_at   TIMESTAMP,
@@ -22,6 +23,7 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX idx_users_apple_id ON users(apple_user_id);
 
 -- ═══════════════════════════════════════════════════════════
 -- PLAN LIMITS (reference table)

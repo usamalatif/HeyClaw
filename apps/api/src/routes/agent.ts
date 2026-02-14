@@ -112,13 +112,7 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
     return c.json({message: 'Message text is required'}, 400);
   }
 
-  // Check daily message limit
-  const canSend = await checkLimit(userId, 'text_messages');
-  if (!canSend) {
-    return c.json({message: 'Daily message limit reached. Upgrade your plan.'}, 429);
-  }
-
-  // Check daily voice limit
+  // Check daily voice limit (voice uses its own quota, not text messages)
   const canVoice = await checkLimit(userId, 'voice_seconds');
   if (!canVoice) {
     return c.json({message: 'Daily voice limit reached. Upgrade your plan.'}, 429);
@@ -265,9 +259,6 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         });
       }
 
-      // Increment usage
-      await incrementUsage(userId, 'text_messages', 1);
-
       // Track voice seconds using cleanText (without markers)
       const inputSec = Math.max(0, Math.ceil(Number(recordingDuration) || 0));
       const wordCount = cleanText.trim().split(/\s+/).length;
@@ -300,9 +291,10 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         data: JSON.stringify({
           type: 'done',
           usage: {
-            messagesUsed: usage.text_messages + 1,
+            messagesUsed: usage.text_messages,
             messagesLimit: limits.daily_text_messages,
             voiceSecondsUsed: usage.voice_input_seconds + totalVoiceSec,
+            voiceSecondsLimit: limits.daily_voice_input_minutes * 60,
           },
           fullText: cleanText,
         }),

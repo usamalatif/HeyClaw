@@ -60,9 +60,6 @@ if [ ! -f "$CONFIG_PATH" ]; then
         list: []
       },
       bindings: [],
-      channels: {
-        webchat: { enabled: true }
-      },
       cron: { enabled: true, maxConcurrentRuns: 1 },
       hooks: { enabled: false }
     };

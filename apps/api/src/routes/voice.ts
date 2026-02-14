@@ -24,12 +24,11 @@ voiceRoutes.post('/transcribe', rateLimitMiddleware, async c => {
     return c.json({message: 'No audio file provided'}, 400);
   }
 
-  const transcription = await transcribeAudio(audioFile);
+  const {text, duration} = await transcribeAudio(audioFile);
 
-  // Estimate ~3 seconds per transcription call (rough average)
-  await incrementUsage(userId, 'voice_seconds', 3);
+  await incrementUsage(userId, 'voice_seconds', Math.ceil(duration));
 
-  return c.json({text: transcription});
+  return c.json({text});
 });
 
 voiceRoutes.post('/speak', async c => {

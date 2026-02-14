@@ -21,7 +21,6 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
   const [stepIndex, setStepIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const dotAnim = useRef(new Animated.Value(0)).current;
   const readyRef = useRef(false);
   const minTimeRef = useRef(false);
 
@@ -46,20 +45,6 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
     pulse.start();
     return () => pulse.stop();
   }, [pulseAnim]);
-
-  // Dot loading animation
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(dotAnim, {
-        toValue: 3,
-        duration: 1500,
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [dotAnim]);
 
   // Fade in on mount
   useEffect(() => {
@@ -101,11 +86,6 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
       }
     }
   }, [profileLoaded, onReady]);
-
-  const dots = dotAnim.interpolate({
-    inputRange: [0, 1, 2, 3],
-    outputRange: ['', '.', '..', '...'],
-  });
 
   return (
     <Animated.View style={[styles.container, {opacity: fadeAnim}]}>

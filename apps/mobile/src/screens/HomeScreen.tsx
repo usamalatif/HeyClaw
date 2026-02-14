@@ -90,7 +90,8 @@ export default function HomeScreen() {
       {/* Usage display */}
       <View style={styles.header}>
         <Text style={styles.usage}>
-          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50} messages
+          {profile?.dailyMessagesUsed ?? 0}/{profile?.dailyMessagesLimit ?? 50} msgs{'  '}
+          {Math.floor((profile?.dailyVoiceSeconds ?? 0) / 60)}/{Math.floor((profile?.dailyVoiceLimit ?? 300) / 60)} min
         </Text>
       </View>
 

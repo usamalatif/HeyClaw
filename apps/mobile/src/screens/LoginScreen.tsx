@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Alert,
   ActivityIndicator,
@@ -22,6 +24,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const setAuthenticated = useAuthStore(s => s.setAuthenticated);
   const setIsNewUser = useAuthStore(s => s.setIsNewUser);
 
@@ -66,7 +69,9 @@ export default function LoginScreen() {
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Image source={clawIcon} style={styles.logoIcon} />
       <Text style={styles.logo}>HeyClaw</Text>
 
@@ -80,14 +85,21 @@ export default function LoginScreen() {
         onChangeText={setEmail}
       />
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#666"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <View style={styles.passwordContainer}>
+        <TextInput
+          style={styles.passwordInput}
+          placeholder="Password"
+          placeholderTextColor="#666"
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={setPassword}
+        />
+        <TouchableOpacity
+          style={styles.eyeButton}
+          onPress={() => setShowPassword(!showPassword)}>
+          <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity
         style={styles.primaryButton}
@@ -111,7 +123,7 @@ export default function LoginScreen() {
       <Text style={styles.terms}>
         By continuing, you agree to our Terms & Privacy Policy
       </Text>
-    </View>
+    </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
 }
@@ -124,18 +136,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoIcon: {
-    width: 150,
-    height: 150,
+    width: 120,
+    height: 120,
     resizeMode: 'contain',
     alignSelf: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   logo: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '800',
     color: '#ff6b35',
     textAlign: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
   },
   input: {
     backgroundColor: '#1a1a1a',
@@ -146,6 +158,30 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#333',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+    color: '#fff',
+  },
+  eyeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  eyeText: {
+    color: '#ff6b35',
+    fontSize: 14,
+    fontWeight: '600',
   },
   primaryButton: {
     backgroundColor: '#ff6b35',

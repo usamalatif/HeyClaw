@@ -7,7 +7,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import {useAuthStore} from '../lib/store';
+import {useAuthStore, useVoiceStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
 import {clearTokens} from '../lib/auth';
 import PaywallModal from '../components/PaywallModal';
@@ -62,6 +62,10 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           await api.logout();
+          useVoiceStore.getState().setLastTranscription(null);
+          useVoiceStore.getState().setLastResponse(null);
+          useChatStore.getState().setMessages([]);
+          useChatStore.getState().setSessionId(null);
           setAuthenticated(false);
           setProfile(null);
         },
@@ -91,6 +95,10 @@ export default function SettingsScreen() {
                   onPress: async () => {
                     try {
                       await api.deleteAccount();
+                      useVoiceStore.getState().setLastTranscription(null);
+                      useVoiceStore.getState().setLastResponse(null);
+                      useChatStore.getState().setMessages([]);
+                      useChatStore.getState().setSessionId(null);
                       setAuthenticated(false);
                       setProfile(null);
                     } catch (err: any) {
@@ -127,10 +135,16 @@ export default function SettingsScreen() {
             {PLAN_LABELS[profile?.plan ?? 'free']}
           </Text>
         </View>
-        <View style={[styles.row, styles.rowLast]}>
+        <View style={styles.row}>
           <Text style={styles.label}>Messages Today</Text>
           <Text style={styles.valueHighlight}>
             {profile?.dailyMessagesUsed ?? 0} / {profile?.dailyMessagesLimit ?? 50}
+          </Text>
+        </View>
+        <View style={[styles.row, styles.rowLast]}>
+          <Text style={styles.label}>Voice Today</Text>
+          <Text style={styles.valueHighlight}>
+            {Math.floor((profile?.dailyVoiceSeconds ?? 0) / 60)} / {Math.floor((profile?.dailyVoiceLimit ?? 300) / 60)} min
           </Text>
         </View>
       </View>

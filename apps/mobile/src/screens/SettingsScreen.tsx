@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {useAuthStore} from '../lib/store';
 import {api} from '../lib/api';
+import {clearTokens} from '../lib/auth';
 import PaywallModal from '../components/PaywallModal';
 import {openSubscriptionManagement, restorePurchases} from '../lib/iap';
 
@@ -66,6 +67,43 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account, AI assistant, and all data. This cannot be undone.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            // Second confirmation
+            Alert.alert(
+              'Are you absolutely sure?',
+              'Type YES to confirm. All your data will be lost forever.',
+              [
+                {text: 'Cancel', style: 'cancel'},
+                {
+                  text: 'Delete Forever',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await api.deleteAccount();
+                      setAuthenticated(false);
+                      setProfile(null);
+                    } catch (err: any) {
+                      Alert.alert('Error', err.message);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   };
 
   const handleUpgrade = () => {
@@ -142,6 +180,11 @@ export default function SettingsScreen() {
       {/* Sign out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
+      </TouchableOpacity>
+
+      {/* Delete account */}
+      <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
+        <Text style={styles.deleteText}>Delete Account</Text>
       </TouchableOpacity>
 
       <View style={styles.footer} />
@@ -281,6 +324,18 @@ const styles = StyleSheet.create({
     color: '#e63946',
     fontSize: 16,
     fontWeight: '600',
+  },
+  deleteButton: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  deleteText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
   },
   footer: {
     height: 60,

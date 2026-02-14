@@ -2,6 +2,7 @@ import {Hono} from 'hono';
 import {authMiddleware} from '../middleware/auth.js';
 import {db} from '../db/pool.js';
 import {getTodayUsage} from '../services/usage.js';
+import {removeAgent} from '../services/agentManager.js';
 import type {AppEnv} from '../lib/types.js';
 
 export const userRoutes = new Hono<AppEnv>();
@@ -132,4 +133,30 @@ userRoutes.get('/usage', async c => {
       dailyTtsCharacters: limits.daily_tts_characters,
     },
   });
+});
+
+// DELETE /user/me — permanently delete account + agent
+userRoutes.delete('/me', async c => {
+  const userId = c.get('userId');
+
+  // Find the user's agent
+  const agentResult = await db.query(
+    'SELECT agent_id FROM assistants WHERE user_id = $1',
+    [userId],
+  );
+
+  // Remove OpenClaw agent from gateway config + workspace
+  for (const row of agentResult.rows) {
+    try {
+      await removeAgent(row.agent_id);
+    } catch (err: any) {
+      console.error(`Failed to remove agent ${row.agent_id}:`, err.message);
+    }
+  }
+
+  // Delete user (CASCADE removes subscriptions, assistants, tokens, usage, sessions)
+  await db.query('DELETE FROM users WHERE id = $1', [userId]);
+
+  console.log(`User deleted: ${userId}`);
+  return c.json({message: 'Account deleted'});
 });

@@ -16,9 +16,11 @@ interface UserProfile {
 interface AuthState {
   isAuthenticated: boolean;
   profileLoading: boolean;
+  isNewUser: boolean;
   profile: UserProfile | null;
   setAuthenticated: (authenticated: boolean) => void;
   setProfileLoading: (loading: boolean) => void;
+  setIsNewUser: (isNew: boolean) => void;
   setProfile: (profile: UserProfile | null) => void;
   updateUsage: (messagesUsed: number, messagesLimit: number) => void;
 }
@@ -26,9 +28,11 @@ interface AuthState {
 export const useAuthStore = create<AuthState>(set => ({
   isAuthenticated: false,
   profileLoading: true,
+  isNewUser: false,
   profile: null,
   setAuthenticated: isAuthenticated => set({isAuthenticated}),
   setProfileLoading: profileLoading => set({profileLoading}),
+  setIsNewUser: isNewUser => set({isNewUser}),
   setProfile: profile => set({profile}),
   updateUsage: (messagesUsed, messagesLimit) =>
     set(state => ({

@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const setAuthenticated = useAuthStore(s => s.setAuthenticated);
+  const setIsNewUser = useAuthStore(s => s.setIsNewUser);
 
   const signInWithPassword = async () => {
     if (!email.trim() || !password.trim()) return;
@@ -54,6 +55,7 @@ export default function LoginScreen() {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
+      setIsNewUser(true);
       setAuthenticated(true);
     } catch (err: any) {
       Alert.alert('Error', err.message);

@@ -115,6 +115,10 @@ export const api = {
   },
 
   // User
+  deleteAccount: async () => {
+    await request('/user/me', {method: 'DELETE'});
+    await clearTokens();
+  },
   getMe: () => request<any>('/user/me'),
   updateMe: (data: Record<string, any>) =>
     request<any>('/user/me', {

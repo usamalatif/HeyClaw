@@ -1174,9 +1174,7 @@
     "@anthropic-ai/sdk" "^0.74.0"
     "@heyclaw/shared" "*"
     "@hono/node-server" "^1.8.0"
-    "@supabase/supabase-js" "^2.45.0"
     bcryptjs "^3.0.3"
-    dockerode "^4.0.9"
     hono "^4.0.0"
     ioredis "^5.9.3"
     jose "^6.1.3"
@@ -1196,7 +1194,6 @@
     "@react-navigation/bottom-tabs" "^7.0.0"
     "@react-navigation/native" "^7.0.0"
     "@react-navigation/native-stack" "^7.0.0"
-    "@supabase/supabase-js" "^2.45.0"
     react "19.2.0"
     react-native "0.83.1"
     react-native-fs "^2.20.0"
@@ -1207,7 +1204,6 @@
     react-native-safe-area-context "^5.5.2"
     react-native-screens "^4.0.0"
     react-native-tts "^4.1.1"
-    react-native-url-polyfill "^3.0.0"
     zustand "^5.0.0"
 
 "@heyclaw/shared@*", "@heyclaw/shared@file:/Users/usamalatif/Desktop/Apps/HeyClaw/packages/shared":
@@ -2054,6 +2050,11 @@
   dependencies:
     "@sinonjs/commons" "^3.0.0"
 
+"@stablelib/base64@^1.0.0":
+  version "1.0.1"
+  resolved "https://registry.npmjs.org/@stablelib/base64/-/base64-1.0.1.tgz"
+  integrity sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==
+
 "@supabase/auth-js@2.95.3":
   version "2.95.3"
   resolved "https://registry.npmjs.org/@supabase/auth-js/-/auth-js-2.95.3.tgz"
@@ -2092,17 +2093,6 @@
   dependencies:
     iceberg-js "^0.8.1"
     tslib "2.8.1"
-
-"@supabase/supabase-js@^2.45.0":
-  version "2.95.3"
-  resolved "https://registry.npmjs.org/@supabase/supabase-js/-/supabase-js-2.95.3.tgz"
-  integrity sha512-Fukw1cUTQ6xdLiHDJhKKPu6svEPaCEDvThqCne3OaQyZvuq2qjhJAd91kJu3PXLG18aooCgYBaB6qQz35hhABg==
-  dependencies:
-    "@supabase/auth-js" "2.95.3"
-    "@supabase/functions-js" "2.95.3"
-    "@supabase/postgrest-js" "2.95.3"
-    "@supabase/realtime-js" "2.95.3"
-    "@supabase/storage-js" "2.95.3"
 
 "@types/babel__core@^7.1.14":
   version "7.20.5"
@@ -2147,15 +2137,6 @@
   resolved "https://registry.npmjs.org/@types/docker-modem/-/docker-modem-3.0.6.tgz"
   integrity sha512-yKpAGEuKRSS8wwx0joknWxsmLha78wNMe9R2S3UNsVOkZded8UqOrV8KoeDXoXsjndxwyF3eIhyClGbO1SEhEg==
   dependencies:
-    "@types/node" "*"
-    "@types/ssh2" "*"
-
-"@types/dockerode@^4.0.1":
-  version "4.0.1"
-  resolved "https://registry.npmjs.org/@types/dockerode/-/dockerode-4.0.1.tgz"
-  integrity sha512-cmUpB+dPN955PxBEuXE3f6lKO1hHiIGYJA46IVF3BJpNsZGvtBDcRnlrHYHtOH/B6vtDOyl2kZ2ShAu3mgc27Q==
-  dependencies:
-    "@types/docker-modem" "*"
     "@types/node" "*"
     "@types/ssh2" "*"
 
@@ -3381,19 +3362,6 @@ docker-modem@^5.0.6:
     split-ca "^1.0.1"
     ssh2 "^1.15.0"
 
-dockerode@^4.0.9:
-  version "4.0.9"
-  resolved "https://registry.npmjs.org/dockerode/-/dockerode-4.0.9.tgz"
-  integrity sha512-iND4mcOWhPaCNh54WmK/KoSb35AFqPAUWFMffTQcp52uQt36b5uNwEJTSXntJZBbeGad72Crbi/hvDIv6us/6Q==
-  dependencies:
-    "@balena/dockerignore" "^1.0.2"
-    "@grpc/grpc-js" "^1.11.1"
-    "@grpc/proto-loader" "^0.7.13"
-    docker-modem "^5.0.6"
-    protobufjs "^7.3.2"
-    tar-fs "^2.1.4"
-    uuid "^10.0.0"
-
 doctrine@^2.1.0:
   version "2.1.0"
   resolved "https://registry.npmjs.org/doctrine/-/doctrine-2.1.0.tgz"
@@ -3944,6 +3912,11 @@ fast-levenshtein@^2.0.6:
   version "2.0.6"
   resolved "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz"
   integrity sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==
+
+fast-sha256@^1.3.0:
+  version "1.3.0"
+  resolved "https://registry.npmjs.org/fast-sha256/-/fast-sha256-1.3.0.tgz"
+  integrity sha512-n11RGP/lrWEFI/bWdygLxhI+pVeo1ZYIVwvvPkW7azl/rOy+F3HYRZ2K5zeE9mmkhQppyv9sQFx0JM9UabnpPQ==
 
 fast-xml-parser@^4.4.1:
   version "4.5.3"
@@ -6243,6 +6216,11 @@ possible-typed-array-names@^1.0.0:
   resolved "https://registry.npmjs.org/possible-typed-array-names/-/possible-typed-array-names-1.1.0.tgz"
   integrity sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==
 
+postal-mime@2.7.3:
+  version "2.7.3"
+  resolved "https://registry.npmjs.org/postal-mime/-/postal-mime-2.7.3.tgz"
+  integrity sha512-MjhXadAJaWgYzevi46+3kLak8y6gbg0ku14O1gO/LNOuay8dO+1PtcSGvAdgDR0DoIsSaiIA8y/Ddw6MnrO0Tw==
+
 postgres-array@~2.0.0:
   version "2.0.0"
   resolved "https://registry.npmjs.org/postgres-array/-/postgres-array-2.0.0.tgz"
@@ -6464,13 +6442,6 @@ react-native-tts@^4.1.1:
   resolved "https://registry.npmjs.org/react-native-tts/-/react-native-tts-4.1.1.tgz"
   integrity sha512-VL0TgCwkUWggbbFGIXAPKC3rM1baluAYtgOdgnaTm7UYsWf/y8n5VgmVB0J2Wa8qt1dldZ1cSsdQY9iz3evcAg==
 
-react-native-url-polyfill@^3.0.0:
-  version "3.0.0"
-  resolved "https://registry.npmjs.org/react-native-url-polyfill/-/react-native-url-polyfill-3.0.0.tgz"
-  integrity sha512-aA5CiuUCUb/lbrliVCJ6lZ17/RpNJzvTO/C7gC/YmDQhTUoRD5q5HlJfwLWcxz4VgAhHwXKzhxH+wUN24tAdqg==
-  dependencies:
-    whatwg-url-without-unicode "8.0.0-3"
-
 react-native@*, "react-native@>= 0.60.2", react-native@>=0.65.1, react-native@0.83.1:
   version "0.83.1"
   resolved "https://registry.npmjs.org/react-native/-/react-native-0.83.1.tgz"
@@ -6627,6 +6598,14 @@ require-main-filename@^2.0.0:
   version "2.0.0"
   resolved "https://registry.npmjs.org/require-main-filename/-/require-main-filename-2.0.0.tgz"
   integrity sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg==
+
+resend@^6.9.2:
+  version "6.9.2"
+  resolved "https://registry.npmjs.org/resend/-/resend-6.9.2.tgz"
+  integrity sha512-uIM6CQ08tS+hTCRuKBFbOBvHIGaEhqZe8s4FOgqsVXSbQLAhmNWpmUhG3UAtRnmcwTWFUqnHa/+Vux8YGPyDBA==
+  dependencies:
+    postal-mime "2.7.3"
+    svix "1.84.1"
 
 resolve-cwd@^3.0.0:
   version "3.0.0"
@@ -7036,6 +7015,14 @@ standard-as-callback@^2.1.0:
   resolved "https://registry.npmjs.org/standard-as-callback/-/standard-as-callback-2.1.0.tgz"
   integrity sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==
 
+standardwebhooks@1.0.0:
+  version "1.0.0"
+  resolved "https://registry.npmjs.org/standardwebhooks/-/standardwebhooks-1.0.0.tgz"
+  integrity sha512-BbHGOQK9olHPMvQNHWul6MYlrRTAOKn03rOe4A8O3CLWhNf4YHBqq2HJKKC+sfqpxiBY52pNeesD6jIiLDz8jg==
+  dependencies:
+    "@stablelib/base64" "^1.0.0"
+    fast-sha256 "^1.3.0"
+
 statuses@~1.5.0:
   version "1.5.0"
   resolved "https://registry.npmjs.org/statuses/-/statuses-1.5.0.tgz"
@@ -7211,6 +7198,14 @@ supports-preserve-symlinks-flag@^1.0.0:
   version "1.0.0"
   resolved "https://registry.npmjs.org/supports-preserve-symlinks-flag/-/supports-preserve-symlinks-flag-1.0.0.tgz"
   integrity sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==
+
+svix@1.84.1:
+  version "1.84.1"
+  resolved "https://registry.npmjs.org/svix/-/svix-1.84.1.tgz"
+  integrity sha512-K8DPPSZaW/XqXiz1kEyzSHYgmGLnhB43nQCMeKjWGCUpLIpAMMM8kx3rVVOSm6Bo6EHyK1RQLPT4R06skM/MlQ==
+  dependencies:
+    standardwebhooks "1.0.0"
+    uuid "^10.0.0"
 
 tar-fs@^2.1.4:
   version "2.1.4"
@@ -7726,11 +7721,6 @@ ws@^7.5.10:
   version "7.5.10"
   resolved "https://registry.npmjs.org/ws/-/ws-7.5.10.tgz"
   integrity sha512-+dbF1tHwZpXcbOJdVOkzLDxZP1ailvSxM6ZweXTegylPny803bFhA+vqBYw4s31NSAk4S2Qz+AKXK9a4wkdjcQ==
-
-ws@^8.18.0, ws@^8.18.2:
-  version "8.19.0"
-  resolved "https://registry.npmjs.org/ws/-/ws-8.19.0.tgz"
-  integrity sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==
 
 xcode@^3.0.1:
   version "3.0.1"

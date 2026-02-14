@@ -13,31 +13,44 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import {useNavigation} from '@react-navigation/native';
+import {NativeStackNavigationProp} from '@react-navigation/native-stack';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 const clawIcon = require('../assets/icon.png');
 import {api} from '../lib/api';
 import {saveTokens} from '../lib/auth';
 import {useAuthStore} from '../lib/store';
+import type {AuthStackParamList} from '../navigation/AuthNavigator';
+
+type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
 
 export default function LoginScreen() {
+  const navigation = useNavigation<NavigationProp>();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const setAuthenticated = useAuthStore(s => s.setAuthenticated);
   const setIsNewUser = useAuthStore(s => s.setIsNewUser);
 
-  const signInWithPassword = async () => {
-    if (!email.trim() || !password.trim()) return;
+  const sendOTP = async () => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      Alert.alert('Error', 'Please enter your email');
+      return;
+    }
+    if (!trimmedEmail.includes('@')) {
+      Alert.alert('Error', 'Please enter a valid email');
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await api.login(email.trim(), password.trim());
-      await saveTokens({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
+      const result = await api.sendOTP(trimmedEmail);
+      navigation.navigate('OTP', {
+        email: trimmedEmail,
+        isSignUp: result.isNewUser,
       });
-      setAuthenticated(true);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {
@@ -45,85 +58,102 @@ export default function LoginScreen() {
     }
   };
 
-  const signUp = async () => {
-    if (!email.trim() || !password.trim()) return;
-    if (password.trim().length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
-      return;
-    }
-    setLoading(true);
+  const signInWithApple = async () => {
     try {
-      const data = await api.signup(email.trim(), password.trim());
+      setAppleLoading(true);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      // Send to backend for verification
+      const data = await api.appleSignIn({
+        identityToken: credential.identityToken!,
+        authorizationCode: credential.authorizationCode!,
+        fullName: credential.fullName,
+        email: credential.email,
+      });
+
       await saveTokens({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
-      setIsNewUser(true);
+
+      if (data.isNewUser) {
+        setIsNewUser(true);
+      }
       setAuthenticated(true);
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      if (err.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Error', err.message || 'Apple Sign In failed');
+      }
     } finally {
-      setLoading(false);
+      setAppleLoading(false);
     }
   };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Image source={clawIcon} style={styles.logoIcon} />
-      <Text style={styles.logo}>HeyClaw</Text>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Image source={clawIcon} style={styles.logoIcon} />
+        <Text style={styles.logo}>HeyClaw</Text>
+        <Text style={styles.tagline}>Your AI, one tap away</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="your@email.com"
-        placeholderTextColor="#666"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <View style={styles.passwordContainer}>
         <TextInput
-          style={styles.passwordInput}
-          placeholder="Password"
+          style={styles.input}
+          placeholder="your@email.com"
           placeholderTextColor="#666"
-          secureTextEntry={!showPassword}
-          value={password}
-          onChangeText={setPassword}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          value={email}
+          onChangeText={setEmail}
+          editable={!loading}
         />
+
         <TouchableOpacity
-          style={styles.eyeButton}
-          onPress={() => setShowPassword(!showPassword)}>
-          <Text style={styles.eyeText}>{showPassword ? 'Hide' : 'Show'}</Text>
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          onPress={sendOTP}
+          disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>Continue with Email</Text>
+          )}
         </TouchableOpacity>
-      </View>
 
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={isSignUp ? signUp : signInWithPassword}
-        disabled={loading}>
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.primaryButtonText}>
-            {isSignUp ? 'Create Account' : 'Sign In'}
-          </Text>
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {Platform.OS === 'ios' && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+            cornerRadius={12}
+            style={styles.appleButton}
+            onPress={signInWithApple}
+          />
         )}
-      </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
-        <Text style={styles.toggleText}>
-          {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+        {appleLoading && (
+          <View style={styles.appleLoading}>
+            <ActivityIndicator color="#ff6b35" />
+          </View>
+        )}
+
+        <Text style={styles.terms}>
+          By continuing, you agree to our{' '}
+          <Text style={styles.link}>Terms of Service</Text> and{' '}
+          <Text style={styles.link}>Privacy Policy</Text>
         </Text>
-      </TouchableOpacity>
-
-      <Text style={styles.terms}>
-        By continuing, you agree to our Terms & Privacy Policy
-      </Text>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
 }
@@ -136,8 +166,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoIcon: {
-    width: 120,
-    height: 120,
+    width: 100,
+    height: 100,
     resizeMode: 'contain',
     alignSelf: 'center',
     marginBottom: 8,
@@ -147,7 +177,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ff6b35',
     textAlign: 'center',
-    marginBottom: 32,
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 40,
   },
   input: {
     backgroundColor: '#1a1a1a',
@@ -159,51 +194,57 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
   },
-  passwordContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  passwordInput: {
-    flex: 1,
-    padding: 16,
-    fontSize: 16,
-    color: '#fff',
-  },
-  eyeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  eyeText: {
-    color: '#ff6b35',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   primaryButton: {
     backgroundColor: '#ff6b35',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   primaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
   },
-  toggleText: {
-    color: '#ff6b35',
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#333',
+  },
+  dividerText: {
+    color: '#666',
+    paddingHorizontal: 16,
     fontSize: 14,
-    textAlign: 'center',
-    marginTop: 12,
+  },
+  appleButton: {
+    width: '100%',
+    height: 50,
+  },
+  appleLoading: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   terms: {
     color: '#666',
     fontSize: 12,
     textAlign: 'center',
     marginTop: 24,
+    lineHeight: 18,
+  },
+  link: {
+    color: '#ff6b35',
   },
 });

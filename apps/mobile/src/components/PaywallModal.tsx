@@ -43,9 +43,24 @@ const PLANS = [
 export default function PaywallModal({visible, onClose}: PaywallModalProps) {
   const {products, purchasing, restoring, error} = useIAPStore();
 
-  const getPrice = (sku: string) => {
+  const getPrice = (sku: string, fallback: string) => {
     const product = products.find(p => p.productId === sku);
-    return (product as any)?.localizedPrice ?? null;
+    const localizedPrice = (product as any)?.localizedPrice;
+    
+    // If ANY product has localized price, use it; otherwise use fallback
+    // This ensures consistency across all plans
+    if (localizedPrice) {
+      return localizedPrice;
+    }
+    
+    // If products are still loading, show loading indicator
+    if (products.length === 0) {
+      return '...';
+    }
+    
+    // Fallback to hardcoded price (shouldn't happen if SKUs are correct)
+    console.warn(`[IAP] No localized price for ${sku}, using fallback`);
+    return fallback;
   };
 
   const handlePurchase = (sku: string) => {
@@ -57,6 +72,24 @@ export default function PaywallModal({visible, onClose}: PaywallModalProps) {
   };
 
   const isLoading = purchasing || restoring;
+  const productsLoading = products.length === 0;
+
+  // Debug: log which products are loaded
+  React.useEffect(() => {
+    if (visible && products.length > 0) {
+      console.log('[Paywall] Loaded products:', products.map(p => ({
+        id: p.productId,
+        price: (p as any).localizedPrice,
+      })));
+      
+      // Check which SKUs are missing
+      const loadedIds = products.map(p => p.productId);
+      const missing = PLANS.filter(plan => !loadedIds.includes(plan.sku));
+      if (missing.length > 0) {
+        console.warn('[Paywall] Missing products:', missing.map(p => p.sku));
+      }
+    }
+  }, [visible, products]);
 
   return (
     <Modal
@@ -88,8 +121,14 @@ export default function PaywallModal({visible, onClose}: PaywallModalProps) {
         )}
 
         <ScrollView style={styles.plansList} contentContainerStyle={styles.plansContent}>
+          {productsLoading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#ff6b35" size="large" />
+              <Text style={styles.loadingText}>Loading plans...</Text>
+            </View>
+          )}
           {PLANS.map(plan => {
-            const livePrice = getPrice(plan.sku);
+            const displayPrice = getPrice(plan.sku, plan.price);
             return (
               <View key={plan.sku} style={styles.planCard}>
                 <View style={styles.planHeader}>
@@ -101,7 +140,7 @@ export default function PaywallModal({visible, onClose}: PaywallModalProps) {
                   )}
                 </View>
                 <Text style={styles.planPrice}>
-                  {livePrice ?? plan.price}
+                  {displayPrice}
                 </Text>
                 <Text style={styles.planHighlight}>
                   {plan.highlight}
@@ -212,6 +251,15 @@ const styles = StyleSheet.create({
   plansContent: {
     paddingHorizontal: 24,
     paddingBottom: 16,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    color: '#888',
+    marginTop: 12,
+    fontSize: 14,
   },
   planCard: {
     backgroundColor: '#1a1a1a',

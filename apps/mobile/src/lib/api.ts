@@ -74,7 +74,56 @@ async function request<T>(
 }
 
 export const api = {
-  // Auth
+  // Auth - OTP Flow
+  sendOTP: async (email: string) => {
+    const res = await fetch(`${API_URL}/auth/send-otp`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to send code');
+    return {isNewUser: data.is_new_user};
+  },
+
+  verifyOTP: async (email: string, code: string) => {
+    const res = await fetch(`${API_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, code}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Invalid code');
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      user: data.user,
+      isNewUser: data.is_new_user,
+    };
+  },
+
+  appleSignIn: async (credentials: {
+    identityToken: string;
+    authorizationCode: string;
+    fullName?: {givenName?: string | null; familyName?: string | null} | null;
+    email?: string | null;
+  }) => {
+    const res = await fetch(`${API_URL}/auth/apple`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(credentials),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Apple Sign In failed');
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      user: data.user,
+      isNewUser: data.is_new_user,
+    };
+  },
+
+  // Legacy password auth (keep for migration)
   signup: async (email: string, password: string, name?: string) => {
     const res = await fetch(`${API_URL}/auth/signup`, {
       method: 'POST',

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>HeyClawMobile</string>
+	<string>HeyClaw</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -41,10 +41,10 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>hjk</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>HeyClaw needs access to your microphone to send voice messages to your AI agent.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HeyClaw may need access to your photo library to share images with your AI agent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>HeyClaw uses speech recognition to convert your voice to text for faster responses.</string>
 	<key>RCTNewArchEnabled</key>

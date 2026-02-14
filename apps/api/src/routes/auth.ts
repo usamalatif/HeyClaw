@@ -6,6 +6,7 @@ import {db} from '../db/pool.js';
 import {redis} from '../db/redis.js';
 import {authMiddleware} from '../middleware/auth.js';
 import {createAgent} from '../services/agentManager.js';
+import {sendVerificationEmail} from '../services/email.js';
 import type {AppEnv} from '../lib/types.js';
 
 export const authRoutes = new Hono<AppEnv>();
@@ -13,6 +14,12 @@ export const authRoutes = new Hono<AppEnv>();
 const JWT_SECRET = () => process.env.JWT_SECRET!;
 const ACCESS_EXPIRES = () => process.env.JWT_ACCESS_EXPIRES || '15m';
 const REFRESH_EXPIRES_DAYS = 30;
+const OTP_EXPIRES_MINUTES = 10;
+
+// Generate 6-digit OTP
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 function generateTokens(userId: string, email: string) {
   const jti = crypto.randomUUID();
@@ -25,7 +32,231 @@ function generateTokens(userId: string, email: string) {
   return {accessToken, refreshToken, jti};
 }
 
-// POST /auth/signup
+// POST /auth/send-otp — Send OTP to email
+authRoutes.post('/send-otp', async c => {
+  const {email} = await c.req.json();
+
+  if (!email) {
+    return c.json({message: 'Email is required'}, 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check if user exists
+  const existing = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+  const isNewUser = existing.rows.length === 0;
+
+  // Generate OTP
+  const otp = generateOTP();
+  const otpKey = `otp:${normalizedEmail}`;
+
+  // Store OTP in Redis with expiry
+  await redis.set(otpKey, otp, 'EX', OTP_EXPIRES_MINUTES * 60);
+
+  // Send OTP via email
+  try {
+    await sendVerificationEmail(normalizedEmail, otp);
+    console.log(`[OTP] Sent to ${normalizedEmail}`);
+  } catch (err: any) {
+    console.error(`[OTP] Failed to send email:`, err.message);
+    return c.json({message: 'Failed to send verification email'}, 500);
+  }
+
+  return c.json({
+    message: 'Code sent',
+    is_new_user: isNewUser,
+  });
+});
+
+// POST /auth/verify-otp — Verify OTP and login/signup
+authRoutes.post('/verify-otp', async c => {
+  const {email, code} = await c.req.json();
+
+  if (!email || !code) {
+    return c.json({message: 'Email and code are required'}, 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const otpKey = `otp:${normalizedEmail}`;
+
+  // Get stored OTP
+  const storedOTP = await redis.get(otpKey);
+
+  if (!storedOTP) {
+    return c.json({message: 'Code expired. Please request a new one.'}, 400);
+  }
+
+  if (storedOTP !== code) {
+    return c.json({message: 'Invalid code'}, 400);
+  }
+
+  // Delete OTP (single use)
+  await redis.del(otpKey);
+
+  // Check if user exists
+  let user;
+  let isNewUser = false;
+
+  const existing = await db.query(
+    'SELECT id, email, name FROM users WHERE email = $1',
+    [normalizedEmail],
+  );
+
+  if (existing.rows.length > 0) {
+    user = existing.rows[0];
+  } else {
+    // Create new user
+    isNewUser = true;
+    const result = await db.query(
+      `INSERT INTO users (email, password_hash)
+       VALUES ($1, $2) RETURNING id, email, name`,
+      [normalizedEmail, 'otp-auth'], // No password for OTP users
+    );
+    user = result.rows[0];
+
+    // Create OpenClaw agent
+    const agentId = `agent-${user.id}`;
+    try {
+      await createAgent(agentId);
+      await db.query(
+        `INSERT INTO assistants (user_id, agent_id, display_name, voice)
+         VALUES ($1, $2, $3, $4)`,
+        [user.id, agentId, 'My Assistant', 'nova'],
+      );
+    } catch (err: any) {
+      console.error(`Failed to create agent for ${user.id}:`, err.message);
+    }
+  }
+
+  // Generate tokens
+  const {accessToken, refreshToken} = generateTokens(user.id, user.email);
+
+  // Store refresh token
+  const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+  await db.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [user.id, refreshHash, expiresAt],
+  );
+
+  console.log(`User ${isNewUser ? 'signed up' : 'logged in'} via OTP: ${user.email}`);
+
+  return c.json({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user: {id: user.id, email: user.email, name: user.name},
+    is_new_user: isNewUser,
+  });
+});
+
+// POST /auth/apple — Apple Sign In
+authRoutes.post('/apple', async c => {
+  const {identityToken, authorizationCode, fullName, email: appleEmail} = await c.req.json();
+
+  if (!identityToken) {
+    return c.json({message: 'Identity token is required'}, 400);
+  }
+
+  // Decode the identity token (JWT from Apple)
+  // In production, verify the signature with Apple's public keys
+  let decoded: any;
+  try {
+    decoded = jwt.decode(identityToken);
+  } catch {
+    return c.json({message: 'Invalid identity token'}, 400);
+  }
+
+  if (!decoded?.sub) {
+    return c.json({message: 'Invalid token payload'}, 400);
+  }
+
+  const appleUserId = decoded.sub;
+  const email = decoded.email || appleEmail;
+
+  if (!email) {
+    return c.json({message: 'Email is required'}, 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check if user exists (by Apple ID or email)
+  let user;
+  let isNewUser = false;
+
+  const existingByApple = await db.query(
+    'SELECT id, email, name FROM users WHERE apple_user_id = $1',
+    [appleUserId],
+  );
+
+  if (existingByApple.rows.length > 0) {
+    user = existingByApple.rows[0];
+  } else {
+    // Check by email
+    const existingByEmail = await db.query(
+      'SELECT id, email, name FROM users WHERE email = $1',
+      [normalizedEmail],
+    );
+
+    if (existingByEmail.rows.length > 0) {
+      // Link Apple ID to existing account
+      user = existingByEmail.rows[0];
+      await db.query(
+        'UPDATE users SET apple_user_id = $1 WHERE id = $2',
+        [appleUserId, user.id],
+      );
+    } else {
+      // Create new user
+      isNewUser = true;
+      const name = fullName
+        ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ')
+        : null;
+
+      const result = await db.query(
+        `INSERT INTO users (email, password_hash, name, apple_user_id)
+         VALUES ($1, $2, $3, $4) RETURNING id, email, name`,
+        [normalizedEmail, 'apple-auth', name, appleUserId],
+      );
+      user = result.rows[0];
+
+      // Create OpenClaw agent
+      const agentId = `agent-${user.id}`;
+      try {
+        await createAgent(agentId);
+        await db.query(
+          `INSERT INTO assistants (user_id, agent_id, display_name, voice)
+           VALUES ($1, $2, $3, $4)`,
+          [user.id, agentId, 'My Assistant', 'nova'],
+        );
+      } catch (err: any) {
+        console.error(`Failed to create agent for ${user.id}:`, err.message);
+      }
+    }
+  }
+
+  // Generate tokens
+  const {accessToken, refreshToken} = generateTokens(user.id, user.email);
+
+  // Store refresh token
+  const refreshHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+  await db.query(
+    `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [user.id, refreshHash, expiresAt],
+  );
+
+  console.log(`User ${isNewUser ? 'signed up' : 'logged in'} via Apple: ${user.email}`);
+
+  return c.json({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user: {id: user.id, email: user.email, name: user.name},
+    is_new_user: isNewUser,
+  });
+});
+
+// POST /auth/signup (legacy password auth)
 authRoutes.post('/signup', async c => {
   const {email, password, name} = await c.req.json();
 

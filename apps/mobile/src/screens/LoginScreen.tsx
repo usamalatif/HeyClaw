@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import * as AppleAuthentication from 'expo-apple-authentication';
+import { appleAuth, AppleButton } from '@invertase/react-native-apple-authentication';
 
 const clawIcon = require('../assets/icon.png');
 import {api} from '../lib/api';
@@ -61,19 +61,25 @@ export default function LoginScreen() {
   const signInWithApple = async () => {
     try {
       setAppleLoading(true);
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
+      const appleAuthRequestResponse = await appleAuth.performRequest({
+        requestedOperation: appleAuth.Operation.LOGIN,
+        requestedScopes: [appleAuth.Scope.FULL_NAME, appleAuth.Scope.EMAIL],
       });
+
+      const credentialState = await appleAuth.getCredentialStateForUser(
+        appleAuthRequestResponse.user,
+      );
+
+      if (credentialState !== appleAuth.State.AUTHORIZED) {
+        throw new Error('Apple Sign In not authorized');
+      }
 
       // Send to backend for verification
       const data = await api.appleSignIn({
-        identityToken: credential.identityToken!,
-        authorizationCode: credential.authorizationCode!,
-        fullName: credential.fullName,
-        email: credential.email,
+        identityToken: appleAuthRequestResponse.identityToken!,
+        authorizationCode: appleAuthRequestResponse.authorizationCode!,
+        fullName: appleAuthRequestResponse.fullName,
+        email: appleAuthRequestResponse.email,
       });
 
       await saveTokens({
@@ -86,7 +92,7 @@ export default function LoginScreen() {
       }
       setAuthenticated(true);
     } catch (err: any) {
-      if (err.code !== 'ERR_REQUEST_CANCELED') {
+      if (err.code !== appleAuth.Error.CANCELED) {
         Alert.alert('Error', err.message || 'Apple Sign In failed');
       }
     } finally {
@@ -132,10 +138,10 @@ export default function LoginScreen() {
           <View style={styles.dividerLine} />
         </View>
 
-        {Platform.OS === 'ios' && (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+        {Platform.OS === 'ios' && appleAuth.isSupported && (
+          <AppleButton
+            buttonType={AppleButton.Type.SIGN_IN}
+            buttonStyle={AppleButton.Style.WHITE}
             cornerRadius={12}
             style={styles.appleButton}
             onPress={signInWithApple}

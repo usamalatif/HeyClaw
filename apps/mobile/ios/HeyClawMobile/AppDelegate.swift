@@ -27,7 +27,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     window = UIWindow(frame: UIScreen.main.bounds)
 
     factory.startReactNative(
-      withModuleName: "HeyClawMobile",
+      withModuleName: "HeyClaw",
       in: window,
       launchOptions: launchOptions
     )

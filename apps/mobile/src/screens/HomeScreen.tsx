@@ -114,7 +114,7 @@ export default function HomeScreen() {
     // Wait for voice to actually start (max 3 seconds)
     const startWait = Date.now();
     while (!voiceStartedRef.current && Date.now() - startWait < 3000) {
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise<void>(r => setTimeout(r, 100));
     }
     
     if (!voiceStartedRef.current) {

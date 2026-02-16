@@ -265,7 +265,7 @@ export async function requestVoicePermissions(): Promise<boolean> {
   
   try {
     const available = await Voice.isAvailable();
-    const isAvailable = available === 1 || available === true;
+    const isAvailable = !!available;
     console.log('[Voice] Voice module available:', isAvailable);
     voiceEngineReady = isAvailable;
     return isAvailable;
@@ -334,14 +334,14 @@ export async function startSpeechRecognition(
   }
   
   // Small delay to let audio session fully reset
-  await new Promise(resolve => setTimeout(resolve, 150));
+  await new Promise<void>(resolve => setTimeout(resolve, 150));
   
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
         // Stop any previous attempt, but don't destroy (keeps engine ready)
         await Voice.stop().catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
+        await new Promise<void>(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
         console.log(`[Voice] Retry attempt ${attempt}...`);
       }
       
@@ -350,7 +350,7 @@ export async function startSpeechRecognition(
       console.log(`[Voice] Voice.start() succeeded on attempt ${attempt + 1}`);
       
       // Another small delay to let the recognizer fully initialize
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
       
       return; // Success!
     } catch (err: any) {

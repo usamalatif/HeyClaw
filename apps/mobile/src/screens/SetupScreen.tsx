@@ -1,5 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {View, Text, Image, StyleSheet, Animated, Easing} from 'react-native';
+import {requestVoicePermissions} from '../lib/audio';
+import {requestNotificationPermission} from '../lib/notifications';
 
 const clawIcon = require('../assets/icon.png');
 
@@ -65,6 +67,16 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
     }, 1800);
     return () => clearInterval(interval);
   }, []);
+
+  // Request permissions during setup (step 2 = "Configuring voice...")
+  useEffect(() => {
+    if (stepIndex === 2) {
+      // Request voice (mic + speech recognition) permissions
+      requestVoicePermissions().catch(console.error);
+      // Request notification permissions
+      requestNotificationPermission().catch(console.error);
+    }
+  }, [stepIndex]);
 
   // Minimum display time
   useEffect(() => {

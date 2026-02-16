@@ -227,22 +227,42 @@ let recognitionCallback: ((text: string) => void) | null = null;
 let recognitionFinalText = '';
 
 /**
- * Check and request speech recognition permissions.
+ * Request microphone and speech recognition permissions upfront.
+ * Call this during onboarding/setup so voice works on first use.
  * Returns true if permissions are granted.
  */
-async function ensureSpeechPermissions(): Promise<boolean> {
+export async function requestVoicePermissions(): Promise<boolean> {
   try {
-    // Check if already available
-    const isAvailable = await Voice.isAvailable();
-    if (isAvailable) {
-      return true;
-    }
+    console.log('[Voice] Requesting permissions...');
     
-    // Try to start to trigger permission prompt, then cancel
-    // This is a workaround since @react-native-voice/voice doesn't expose permission APIs directly
-    return false;
-  } catch {
-    return false;
+    // Start and immediately stop to trigger iOS permission dialogs
+    // This prompts for both Speech Recognition and Microphone
+    await Voice.start('en-US');
+    
+    // Give iOS time to process and show dialogs
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    await Voice.stop();
+    await Voice.destroy();
+    
+    console.log('[Voice] Permissions granted');
+    return true;
+  } catch (err: any) {
+    console.log('[Voice] Permission request error:', err.message);
+    
+    // Still try to clean up
+    try {
+      await Voice.destroy();
+    } catch {}
+    
+    // If error is not permission-related, permissions might still be granted
+    // Check if voice is available now
+    try {
+      const isAvailable = await Voice.isAvailable();
+      return isAvailable === 1 || isAvailable === true;
+    } catch {
+      return false;
+    }
   }
 }
 

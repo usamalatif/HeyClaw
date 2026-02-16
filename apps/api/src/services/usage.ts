@@ -58,7 +58,17 @@ async function syncToDB(userId: string, type: string, amount: number): Promise<v
   };
   const field = fieldMap[type];
   if (field) {
-    await db.query('SELECT increment_daily_usage($1, $2, $3)', [userId, field, amount]);
+    try {
+      await db.query('SELECT increment_daily_usage($1, $2, $3)', [userId, field, amount]);
+    } catch (err: any) {
+      // FK violation = user doesn't exist in DB (deleted or failed creation)
+      // Log but don't crash - usage is already tracked in Redis
+      if (err.code === '23503') {
+        console.warn(`[Usage] User ${userId} not found in DB, skipping sync`);
+      } else {
+        throw err;
+      }
+    }
   }
 }
 

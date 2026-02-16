@@ -56,7 +56,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
         enabled: true,
         headless: true,
         executablePath: '/usr/bin/chromium',
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+        noSandbox: true
       },
       agents: {
         defaults: {

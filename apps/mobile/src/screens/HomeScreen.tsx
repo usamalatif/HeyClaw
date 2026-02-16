@@ -71,15 +71,19 @@ export default function HomeScreen() {
       setShowPaywall(true);
       return;
     }
+    
+    // Set recording state IMMEDIATELY so UI updates
+    setLastTranscription(null);
+    setRecording(true);
+    recordingStartRef.current = Date.now();
+    
     try {
-      setLastTranscription(null);
-      recordingStartRef.current = Date.now();
       await startSpeechRecognition((partialText) => {
         setLastTranscription(partialText);
       });
-      setRecording(true);
     } catch (err: any) {
       console.error('Failed to start speech recognition:', err);
+      setRecording(false);
       // Show user-friendly message on permission issues
       if (err.message?.includes('permission') || err.message?.includes('denied')) {
         useVoiceStore.getState().setLastResponse(

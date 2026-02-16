@@ -43,6 +43,7 @@ export default function HomeScreen() {
   const setRecording = useVoiceStore(s => s.setRecording);
   const {processVoiceInput, cancel} = useVoiceFlow();
   const recordingStartRef = useRef<number>(0);
+  const voiceStartedRef = useRef<boolean>(false);
 
   const hasVoice = (profile?.dailyVoiceSeconds ?? 0) < (profile?.dailyVoiceLimit ?? 300);
   const voiceWarmedUp = useRef(false);
@@ -67,22 +68,30 @@ export default function HomeScreen() {
   const setLastTranscription = useVoiceStore(s => s.setLastTranscription);
 
   const handlePressIn = async () => {
+    console.log('[HomeScreen] handlePressIn called, hasVoice:', hasVoice);
     if (!hasVoice) {
       setShowPaywall(true);
       return;
     }
     
     // Set recording state IMMEDIATELY so UI updates
+    console.log('[HomeScreen] Setting recording=true');
     setLastTranscription(null);
     setRecording(true);
+    voiceStartedRef.current = false;
     recordingStartRef.current = Date.now();
     
     try {
+      console.log('[HomeScreen] Starting speech recognition...');
       await startSpeechRecognition((partialText) => {
+        console.log('[HomeScreen] Partial result:', partialText);
         setLastTranscription(partialText);
       });
+      voiceStartedRef.current = true;
+      console.log('[HomeScreen] Speech recognition started successfully');
     } catch (err: any) {
-      console.error('Failed to start speech recognition:', err);
+      console.error('[HomeScreen] Failed to start speech recognition:', err);
+      voiceStartedRef.current = false;
       setRecording(false);
       // Show user-friendly message on permission issues
       if (err.message?.includes('permission') || err.message?.includes('denied')) {
@@ -99,17 +108,33 @@ export default function HomeScreen() {
   };
 
   const handlePressOut = async () => {
+    console.log('[HomeScreen] handlePressOut called, isRecording:', isRecording, 'voiceStarted:', voiceStartedRef.current);
     if (!isRecording) return;
+    
+    // Wait for voice to actually start (max 3 seconds)
+    const startWait = Date.now();
+    while (!voiceStartedRef.current && Date.now() - startWait < 3000) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    if (!voiceStartedRef.current) {
+      console.log('[HomeScreen] Voice never started, canceling');
+      setRecording(false);
+      await cancelSpeechRecognition();
+      return;
+    }
+    
     try {
+      console.log('[HomeScreen] Stopping speech recognition...');
       const transcribedText = await stopSpeechRecognition();
       setRecording(false);
       const durationSec = Math.max(1, Math.ceil((Date.now() - recordingStartRef.current) / 1000));
-      console.log('[Voice] Recording duration:', durationSec, 'seconds');
+      console.log('[HomeScreen] Recording duration:', durationSec, 'seconds, text:', transcribedText);
       if (transcribedText?.trim()) {
         processVoiceInput(transcribedText.trim(), durationSec);
       }
     } catch (err) {
-      console.error('Failed to stop speech recognition:', err);
+      console.error('[HomeScreen] Failed to stop speech recognition:', err);
       setRecording(false);
       await cancelSpeechRecognition();
     }

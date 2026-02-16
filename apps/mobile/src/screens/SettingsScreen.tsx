@@ -6,7 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Linking,
 } from 'react-native';
+
+const SUPPORT_EMAIL = 'hi@weiblocks.io';
 import {useAuthStore, useVoiceStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
 import {clearTokens} from '../lib/auth';
@@ -191,6 +194,13 @@ export default function SettingsScreen() {
         <Text style={styles.restoreText}>Restore Purchases</Text>
       </TouchableOpacity>
 
+      {/* Contact Support */}
+      <TouchableOpacity 
+        style={styles.supportButton} 
+        onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=HeyClaw Support`)}>
+        <Text style={styles.supportText}>Contact Support</Text>
+      </TouchableOpacity>
+
       {/* Sign out */}
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
@@ -322,6 +332,17 @@ const styles = StyleSheet.create({
   },
   restoreText: {
     color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  supportButton: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  supportText: {
+    color: '#ff6b35',
     fontSize: 14,
     fontWeight: '500',
   },

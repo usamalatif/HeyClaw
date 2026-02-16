@@ -231,6 +231,9 @@ let voiceEngineReady = false;
  * Warm up the Voice engine so first recognition starts instantly.
  * Call this when HomeScreen mounts (after permissions are granted).
  * Does a quick start/stop cycle to initialize the speech recognizer.
+ * 
+ * NOTE: We do NOT call Voice.destroy() - that would reset the module
+ * and cause issues with the first real recognition attempt.
  */
 export async function warmUpVoice(): Promise<void> {
   if (voiceEngineReady) {
@@ -242,22 +245,23 @@ export async function warmUpVoice(): Promise<void> {
   
   try {
     // Quick start/stop cycle to initialize the recognizer
+    // Don't destroy - leave the engine in a ready state
     await Voice.start('en-US');
-    await new Promise(resolve => setTimeout(resolve, 100));
+    console.log('[Voice] Warm-up start succeeded');
+    await new Promise(resolve => setTimeout(resolve, 200));
     await Voice.stop();
-    await Voice.destroy();
+    console.log('[Voice] Warm-up stop succeeded');
     
     voiceEngineReady = true;
     console.log('[Voice] Engine warmed up successfully');
   } catch (err: any) {
     console.log('[Voice] Warm-up error (may still work):', err.message);
     // Even if warm-up fails, mark as ready so we don't keep retrying
-    // The actual startSpeechRecognition has its own retry logic
     voiceEngineReady = true;
     
-    // Clean up
+    // Try to clean up gracefully
     try {
-      await Voice.destroy();
+      await Voice.stop();
     } catch {}
   }
 }
@@ -267,8 +271,8 @@ export async function warmUpVoice(): Promise<void> {
  * Call this during onboarding/setup so voice works on first use.
  * Returns true if permissions are granted.
  * 
- * This function waits for the user to respond to permission dialogs,
- * not just for the dialogs to appear.
+ * NOTE: We avoid Voice.destroy() as it can leave the module in a bad state.
+ * Just start/stop to trigger permission dialogs and verify they work.
  */
 export async function requestVoicePermissions(): Promise<boolean> {
   console.log('[Voice] Requesting permissions...');
@@ -280,7 +284,8 @@ export async function requestVoicePermissions(): Promise<boolean> {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       if (attempt > 0) {
-        await Voice.destroy().catch(() => {});
+        // Just stop, don't destroy
+        await Voice.stop().catch(() => {});
         await new Promise(resolve => setTimeout(resolve, ATTEMPT_DELAY));
         console.log(`[Voice] Permission check attempt ${attempt + 1}...`);
       }
@@ -290,9 +295,10 @@ export async function requestVoicePermissions(): Promise<boolean> {
       
       // If we get here, permissions are granted!
       await Voice.stop();
-      await Voice.destroy();
+      // Don't destroy - leave engine ready for warmUpVoice
       
       console.log('[Voice] Permissions granted');
+      voiceEngineReady = true; // Mark as ready since we just tested it
       return true;
     } catch (err: any) {
       console.log(`[Voice] Attempt ${attempt + 1} error:`, err.message);
@@ -301,7 +307,6 @@ export async function requestVoicePermissions(): Promise<boolean> {
       if (err.message?.toLowerCase().includes('denied') && 
           !err.message?.toLowerCase().includes('busy')) {
         console.log('[Voice] Permission denied by user');
-        await Voice.destroy().catch(() => {});
         return false;
       }
       // Otherwise keep trying (dialog might still be showing)
@@ -310,7 +315,6 @@ export async function requestVoicePermissions(): Promise<boolean> {
   
   // Final check
   try {
-    await Voice.destroy().catch(() => {});
     const isAvailable = await Voice.isAvailable();
     const available = isAvailable === 1 || isAvailable === true;
     console.log('[Voice] Final availability check:', available);
@@ -357,20 +361,21 @@ export async function startSpeechRecognition(
   
   let lastError: Error | null = null;
   
+  console.log('[Voice] startSpeechRecognition called, voiceEngineReady:', voiceEngineReady);
+  
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
-        // Clean up before retry
-        await Voice.destroy().catch(() => {});
+        // Stop any previous attempt, but don't destroy (keeps engine ready)
+        await Voice.stop().catch(() => {});
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
         console.log(`[Voice] Retry attempt ${attempt}...`);
       }
       
+      console.log(`[Voice] Calling Voice.start() attempt ${attempt + 1}`);
       await Voice.start('en-US');
+      console.log(`[Voice] Voice.start() succeeded on attempt ${attempt + 1}`);
       
-      if (attempt > 0) {
-        console.log(`[Voice] Started on attempt ${attempt + 1}`);
-      }
       return; // Success!
     } catch (err: any) {
       lastError = err;

@@ -31,6 +31,9 @@
 	"tools": {
 		"deny": ["gateway"]
 	},
+	"web": {
+		"braveApiKey": "${BRAVE_API_KEY}"
+	},
 	"agents": {
 		"defaults": {
 			"model": {

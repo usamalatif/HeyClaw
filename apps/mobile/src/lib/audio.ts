@@ -230,39 +230,57 @@ let recognitionFinalText = '';
  * Request microphone and speech recognition permissions upfront.
  * Call this during onboarding/setup so voice works on first use.
  * Returns true if permissions are granted.
+ * 
+ * This function waits for the user to respond to permission dialogs,
+ * not just for the dialogs to appear.
  */
 export async function requestVoicePermissions(): Promise<boolean> {
-  try {
-    console.log('[Voice] Requesting permissions...');
-    
-    // Start and immediately stop to trigger iOS permission dialogs
-    // This prompts for both Speech Recognition and Microphone
-    await Voice.start('en-US');
-    
-    // Give iOS time to process and show dialogs
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    await Voice.stop();
-    await Voice.destroy();
-    
-    console.log('[Voice] Permissions granted');
-    return true;
-  } catch (err: any) {
-    console.log('[Voice] Permission request error:', err.message);
-    
-    // Still try to clean up
+  console.log('[Voice] Requesting permissions...');
+  
+  // Retry loop to handle permission dialog timing
+  const MAX_ATTEMPTS = 6;
+  const ATTEMPT_DELAY = 1000; // 1 second between attempts, total ~6s
+  
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
+      if (attempt > 0) {
+        await Voice.destroy().catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, ATTEMPT_DELAY));
+        console.log(`[Voice] Permission check attempt ${attempt + 1}...`);
+      }
+      
+      // Try to start - this triggers permission dialogs on first run
+      await Voice.start('en-US');
+      
+      // If we get here, permissions are granted!
+      await Voice.stop();
       await Voice.destroy();
-    } catch {}
-    
-    // If error is not permission-related, permissions might still be granted
-    // Check if voice is available now
-    try {
-      const isAvailable = await Voice.isAvailable();
-      return isAvailable === 1 || isAvailable === true;
-    } catch {
-      return false;
+      
+      console.log('[Voice] Permissions granted');
+      return true;
+    } catch (err: any) {
+      console.log(`[Voice] Attempt ${attempt + 1} error:`, err.message);
+      
+      // If user explicitly denied, stop retrying
+      if (err.message?.toLowerCase().includes('denied') && 
+          !err.message?.toLowerCase().includes('busy')) {
+        console.log('[Voice] Permission denied by user');
+        await Voice.destroy().catch(() => {});
+        return false;
+      }
+      // Otherwise keep trying (dialog might still be showing)
     }
+  }
+  
+  // Final check
+  try {
+    await Voice.destroy().catch(() => {});
+    const isAvailable = await Voice.isAvailable();
+    const available = isAvailable === 1 || isAvailable === true;
+    console.log('[Voice] Final availability check:', available);
+    return available;
+  } catch {
+    return false;
   }
 }
 
@@ -272,7 +290,8 @@ export async function requestVoicePermissions(): Promise<boolean> {
  * Returns immediately — use stopSpeechRecognition() to get final text.
  * 
  * IMPORTANT: On first run, iOS will prompt for permissions. If this happens,
- * Voice.start() may fail. We catch this and retry after a short delay.
+ * Voice.start() may fail. We retry with exponential backoff to give user time
+ * to grant permissions in the dialog.
  */
 export async function startSpeechRecognition(
   onPartialResult: (text: string) => void,
@@ -296,24 +315,41 @@ export async function startSpeechRecognition(
     console.log('[Voice] Speech error:', e?.error?.code, e?.error?.message);
   };
 
-  try {
-    await Voice.start('en-US');
-  } catch (err: any) {
-    console.log('[Voice] First start attempt failed:', err.message);
-    
-    // Permission dialog may have just been shown — wait and retry
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
+  // Try to start voice recognition with retries for permission dialogs
+  const MAX_RETRIES = 4;
+  const RETRY_DELAYS = [300, 800, 1500, 2500]; // Total ~5s for user to tap Allow
+  
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      // Destroy any stale state and try again
-      await Voice.destroy();
+      if (attempt > 0) {
+        // Clean up before retry
+        await Voice.destroy().catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt - 1]));
+        console.log(`[Voice] Retry attempt ${attempt}...`);
+      }
+      
       await Voice.start('en-US');
-      console.log('[Voice] Retry succeeded');
-    } catch (retryErr: any) {
-      console.error('[Voice] Retry also failed:', retryErr.message);
-      throw retryErr;
+      
+      if (attempt > 0) {
+        console.log(`[Voice] Started on attempt ${attempt + 1}`);
+      }
+      return; // Success!
+    } catch (err: any) {
+      lastError = err;
+      console.log(`[Voice] Attempt ${attempt + 1} failed:`, err.message);
+      
+      // If it's clearly a permission denied error (not just "in progress"), don't retry
+      if (err.message?.toLowerCase().includes('denied') && 
+          !err.message?.toLowerCase().includes('busy')) {
+        break;
+      }
     }
   }
+  
+  // All retries failed
+  throw lastError || new Error('Failed to start speech recognition');
 }
 
 /**

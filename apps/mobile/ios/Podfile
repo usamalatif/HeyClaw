@@ -15,6 +15,9 @@ node_require('react-native-permissions/scripts/setup.rb')
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# Required for Firebase with static libraries
+use_modular_headers!
+
 # react-native-permissions: only include the permissions we need
 setup_permissions([
   'Microphone',

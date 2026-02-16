@@ -30,6 +30,11 @@ end
 target 'HeyClawMobile' do
   config = use_native_modules!
 
+  # Firebase requires modular headers for these specific pods
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCore', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

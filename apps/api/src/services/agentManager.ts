@@ -45,21 +45,31 @@ const GATEWAY_CONTAINER = process.env.GATEWAY_CONTAINER_NAME || 'heyclaw-gateway
 
 function reloadGateway(): Promise<void> {
   return new Promise((resolve) => {
-    // Debounce: if multiple agent changes happen quickly, only restart once
+    // Debounce: if multiple agent changes happen quickly, only reload once
     if (reloadTimer) {
       clearTimeout(reloadTimer);
     }
     reloadTimer = setTimeout(() => {
       reloadTimer = null;
-      exec(`docker restart ${GATEWAY_CONTAINER}`, (err, _stdout, stderr) => {
+      // Use SIGUSR1 for hot-reload instead of full container restart
+      // This reloads config without dropping existing connections
+      exec(`docker exec ${GATEWAY_CONTAINER} pkill -SIGUSR1 -f "node.*openclaw"`, (err, _stdout, stderr) => {
         if (err) {
-          console.error('[AgentManager] Gateway restart failed:', stderr);
+          // Fallback to full restart if hot-reload fails
+          console.warn('[AgentManager] Hot-reload failed, falling back to restart:', stderr);
+          exec(`docker restart ${GATEWAY_CONTAINER}`, (err2, _stdout2, stderr2) => {
+            if (err2) {
+              console.error('[AgentManager] Gateway restart failed:', stderr2);
+            } else {
+              console.log('[AgentManager] Gateway restarted (fallback)');
+            }
+          });
         } else {
-          console.log('[AgentManager] Gateway restarted successfully');
+          console.log('[AgentManager] Gateway hot-reloaded (SIGUSR1)');
         }
       });
     }, RELOAD_DEBOUNCE_MS);
-    // Resolve immediately — restart happens in background
+    // Resolve immediately — reload happens in background
     resolve();
   });
 }

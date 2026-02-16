@@ -16,6 +16,10 @@ const ACCESS_EXPIRES = () => process.env.JWT_ACCESS_EXPIRES || '15m';
 const REFRESH_EXPIRES_DAYS = 30;
 const OTP_EXPIRES_MINUTES = 10;
 
+// App Store review test account
+const REVIEW_EMAIL = 'review@heyclaw.xyz';
+const REVIEW_OTP = '123456';
+
 // Generate 6-digit OTP
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -45,6 +49,17 @@ authRoutes.post('/send-otp', async c => {
   // Check if user exists
   const existing = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
   const isNewUser = existing.rows.length === 0;
+
+  // App Store review account - use fixed OTP, don't send email
+  if (normalizedEmail === REVIEW_EMAIL) {
+    const otpKey = `otp:${normalizedEmail}`;
+    await redis.set(otpKey, REVIEW_OTP, 'EX', OTP_EXPIRES_MINUTES * 60);
+    console.log(`[OTP] Review account - using fixed OTP`);
+    return c.json({
+      message: 'Code sent',
+      is_new_user: isNewUser,
+    });
+  }
 
   // Generate OTP
   const otp = generateOTP();

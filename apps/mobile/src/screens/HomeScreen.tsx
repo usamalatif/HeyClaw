@@ -67,8 +67,19 @@ export default function HomeScreen() {
         setLastTranscription(partialText);
       });
       setRecording(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to start speech recognition:', err);
+      // Show user-friendly message on permission issues
+      if (err.message?.includes('permission') || err.message?.includes('denied')) {
+        useVoiceStore.getState().setLastResponse(
+          'Please grant microphone and speech recognition permissions in Settings, then try again.'
+        );
+      } else {
+        // Generic retry message
+        useVoiceStore.getState().setLastResponse(
+          'Could not start voice recognition. Please try again.'
+        );
+      }
     }
   };
 

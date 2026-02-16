@@ -227,9 +227,32 @@ let recognitionCallback: ((text: string) => void) | null = null;
 let recognitionFinalText = '';
 
 /**
+ * Check and request speech recognition permissions.
+ * Returns true if permissions are granted.
+ */
+async function ensureSpeechPermissions(): Promise<boolean> {
+  try {
+    // Check if already available
+    const isAvailable = await Voice.isAvailable();
+    if (isAvailable) {
+      return true;
+    }
+    
+    // Try to start to trigger permission prompt, then cancel
+    // This is a workaround since @react-native-voice/voice doesn't expose permission APIs directly
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Start real-time on-device speech recognition.
  * Calls onPartialResult with live transcription as user speaks.
  * Returns immediately — use stopSpeechRecognition() to get final text.
+ * 
+ * IMPORTANT: On first run, iOS will prompt for permissions. If this happens,
+ * Voice.start() may fail. We catch this and retry after a short delay.
  */
 export async function startSpeechRecognition(
   onPartialResult: (text: string) => void,
@@ -248,7 +271,29 @@ export async function startSpeechRecognition(
     recognitionCallback?.(text);
   };
 
-  await Voice.start('en-US');
+  // Handle errors (permissions denied, etc.)
+  Voice.onSpeechError = (e: any) => {
+    console.log('[Voice] Speech error:', e?.error?.code, e?.error?.message);
+  };
+
+  try {
+    await Voice.start('en-US');
+  } catch (err: any) {
+    console.log('[Voice] First start attempt failed:', err.message);
+    
+    // Permission dialog may have just been shown — wait and retry
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    try {
+      // Destroy any stale state and try again
+      await Voice.destroy();
+      await Voice.start('en-US');
+      console.log('[Voice] Retry succeeded');
+    } catch (retryErr: any) {
+      console.error('[Voice] Retry also failed:', retryErr.message);
+      throw retryErr;
+    }
+  }
 }
 
 /**

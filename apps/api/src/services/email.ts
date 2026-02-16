@@ -78,15 +78,30 @@ export async function sendPasswordResetEmail(email: string, resetToken: string, 
   });
 }
 
-export async function sendVerificationEmail(email: string, code: string) {
+export async function sendVerificationEmail(email: string, code: string, purpose: string = 'login') {
+  const titles: Record<string, string> = {
+    'login': 'Verify your email',
+    'account deletion': 'Confirm account deletion',
+  };
+  
+  const descriptions: Record<string, string> = {
+    'login': 'Here\'s your verification code:',
+    'account deletion': 'You requested to delete your HeyClaw account. Enter this code to confirm:',
+  };
+
+  const subjects: Record<string, string> = {
+    'login': 'Verify your HeyClaw email',
+    'account deletion': 'HeyClaw Account Deletion Code',
+  };
+
   return sendEmail({
     to: email,
-    subject: 'Verify your HeyClaw email',
+    subject: subjects[purpose] || subjects['login'],
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #1a1a1a;">Verify your email</h1>
+        <h1 style="color: #1a1a1a;">${titles[purpose] || titles['login']}</h1>
         <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6;">
-          Here's your verification code:
+          ${descriptions[purpose] || descriptions['login']}
         </p>
         <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; text-align: center; margin: 16px 0;">
           <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1a1a1a;">
@@ -94,7 +109,7 @@ export async function sendVerificationEmail(email: string, code: string) {
           </span>
         </div>
         <p style="color: #888; font-size: 14px;">
-          This code expires in 10 minutes.
+          This code expires in 10 minutes.${purpose === 'account deletion' ? ' If you did not request this, please ignore this email.' : ''}
         </p>
       </div>
     `,

@@ -30,21 +30,7 @@
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>93.115.26.164</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-				<key>NSIncludesSubdomains</key>
-				<true/>
-			</dict>
-		</dict>
 	</dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>HeyClaw needs access to your microphone to send voice messages to your AI agent.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>HeyClaw may need access to your photo library to share images with your AI agent.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>HeyClaw uses speech recognition to convert your voice to text for faster responses.</string>
 	<key>RCTNewArchEnabled</key>

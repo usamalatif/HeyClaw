@@ -515,3 +515,150 @@ authRoutes.post('/reset-password', async c => {
 
   return c.json({message: 'Password reset successfully'});
 });
+
+// ==========================================
+// Account Deletion Flow
+// ==========================================
+
+// POST /auth/delete-request — Request account deletion (sends OTP)
+authRoutes.post('/delete-request', async c => {
+  const {email} = await c.req.json();
+
+  if (!email) {
+    return c.json({message: 'Email is required'}, 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check if user exists
+  const result = await db.query('SELECT id FROM users WHERE email = $1', [normalizedEmail]);
+  if (result.rows.length === 0) {
+    // Don't reveal if account exists
+    return c.json({message: 'If an account exists, a verification code has been sent'});
+  }
+
+  // Generate OTP for deletion
+  const otp = generateOTP();
+  const otpKey = `delete-otp:${normalizedEmail}`;
+
+  // Store OTP in Redis with expiry
+  await redis.set(otpKey, otp, 'EX', OTP_EXPIRES_MINUTES * 60);
+
+  // Send OTP via email
+  try {
+    await sendVerificationEmail(normalizedEmail, otp, 'account deletion');
+    console.log(`[Delete] OTP sent to ${normalizedEmail}`);
+  } catch (err: any) {
+    console.error(`[Delete] Failed to send email:`, err.message);
+    return c.json({message: 'Failed to send verification email'}, 500);
+  }
+
+  return c.json({message: 'Verification code sent'});
+});
+
+// POST /auth/delete-verify — Verify OTP for deletion
+authRoutes.post('/delete-verify', async c => {
+  const {email, code} = await c.req.json();
+
+  if (!email || !code) {
+    return c.json({message: 'Email and code are required'}, 400);
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const otpKey = `delete-otp:${normalizedEmail}`;
+
+  // Get stored OTP
+  const storedOTP = await redis.get(otpKey);
+
+  if (!storedOTP) {
+    return c.json({message: 'Code expired. Please request a new one.'}, 400);
+  }
+
+  if (storedOTP !== code) {
+    return c.json({message: 'Invalid code'}, 400);
+  }
+
+  // Don't delete OTP yet — user still needs to confirm
+  // Generate a short-lived deletion token
+  const deletionToken = jwt.sign(
+    {email: normalizedEmail, action: 'delete'},
+    JWT_SECRET(),
+    {expiresIn: '10m'},
+  );
+
+  return c.json({
+    message: 'Code verified',
+    token: deletionToken,
+  });
+});
+
+// POST /auth/delete-confirm — Actually delete the account
+authRoutes.post('/delete-confirm', async c => {
+  const authHeader = c.req.header('Authorization');
+  
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({message: 'Authorization required'}, 401);
+  }
+
+  const token = authHeader.slice(7);
+  
+  let decoded: any;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET());
+  } catch {
+    return c.json({message: 'Invalid or expired token'}, 401);
+  }
+
+  if (decoded.action !== 'delete') {
+    return c.json({message: 'Invalid token'}, 401);
+  }
+
+  const normalizedEmail = decoded.email;
+
+  // Get user
+  const userResult = await db.query(
+    'SELECT id FROM users WHERE email = $1',
+    [normalizedEmail],
+  );
+
+  if (userResult.rows.length === 0) {
+    return c.json({message: 'Account not found'}, 404);
+  }
+
+  const userId = userResult.rows[0].id;
+
+  // Delete OTP
+  await redis.del(`delete-otp:${normalizedEmail}`);
+
+  // Delete all user data
+  try {
+    // 1. Get agent ID for cleanup
+    const agentResult = await db.query(
+      'SELECT agent_id FROM assistants WHERE user_id = $1',
+      [userId],
+    );
+    const agentId = agentResult.rows[0]?.agent_id;
+
+    // 2. Delete from OpenClaw (agent + workspace)
+    if (agentId) {
+      const {removeAgent} = await import('../services/agentManager.js');
+      await removeAgent(agentId).catch(err => {
+        console.error(`[Delete] Failed to remove agent ${agentId}:`, err.message);
+      });
+    }
+
+    // 3. Delete database records (cascading or manual)
+    await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM assistants WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM subscriptions WHERE user_id = $1', [userId]);
+    await db.query('DELETE FROM users WHERE id = $1', [userId]);
+
+    console.log(`[Delete] Account deleted: ${normalizedEmail} (${userId})`);
+
+    return c.json({message: 'Account deleted successfully'});
+  } catch (err: any) {
+    console.error(`[Delete] Failed to delete account:`, err.message);
+    return c.json({message: 'Failed to delete account'}, 500);
+  }
+});

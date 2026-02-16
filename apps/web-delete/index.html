@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete Account - HeyClaw</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    
+    .logo {
+      font-size: 48px;
+      margin-bottom: 8px;
+    }
+    
+    h1 {
+      color: #ff6b35;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    
+    .subtitle {
+      color: #888;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    
+    .card {
+      background: #1a1a1a;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    
+    .step-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    
+    .input-group {
+      margin-bottom: 16px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #333;
+      border-radius: 12px;
+      background: #0a0a0a;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    input:focus {
+      border-color: #ff6b35;
+    }
+    
+    input::placeholder {
+      color: #666;
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    
+    button:active {
+      transform: scale(0.98);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background: #ff6b35;
+      color: #fff;
+    }
+    
+    .btn-danger {
+      background: #e63946;
+      color: #fff;
+    }
+    
+    .btn-secondary {
+      background: #333;
+      color: #fff;
+      margin-top: 12px;
+    }
+    
+    .message {
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    
+    .message.error {
+      background: rgba(230, 57, 70, 0.2);
+      color: #e63946;
+    }
+    
+    .message.success {
+      background: rgba(74, 222, 128, 0.2);
+      color: #4ade80;
+    }
+    
+    .warning {
+      background: rgba(255, 107, 53, 0.1);
+      border: 1px solid rgba(255, 107, 53, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    
+    .warning-title {
+      color: #ff6b35;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .warning-text {
+      color: #999;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .footer {
+      color: #666;
+      font-size: 12px;
+    }
+    
+    .footer a {
+      color: #ff6b35;
+      text-decoration: none;
+    }
+    
+    .otp-input {
+      letter-spacing: 8px;
+      text-align: center;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    
+    .resend {
+      color: #888;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    
+    .resend button {
+      background: none;
+      border: none;
+      color: #ff6b35;
+      font-size: 13px;
+      padding: 0;
+      width: auto;
+      cursor: pointer;
+    }
+    
+    .resend button:disabled {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🦞</div>
+    <h1>HeyClaw</h1>
+    <p class="subtitle">Account Deletion</p>
+    
+    <!-- Step 1: Enter Email -->
+    <div id="step1" class="card">
+      <p class="step-title">Enter your email</p>
+      <div id="message1" class="message hidden"></div>
+      <div class="input-group">
+        <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <button class="btn-primary" onclick="sendOTP()">Send Verification Code</button>
+    </div>
+    
+    <!-- Step 2: Enter OTP -->
+    <div id="step2" class="card hidden">
+      <p class="step-title">Enter verification code</p>
+      <p style="color: #888; font-size: 13px; margin-bottom: 16px;">
+        We sent a 6-digit code to <span id="emailDisplay"></span>
+      </p>
+      <div id="message2" class="message hidden"></div>
+      <div class="input-group">
+        <input type="text" id="otp" class="otp-input" placeholder="000000" maxlength="6" inputmode="numeric">
+      </div>
+      <button class="btn-primary" onclick="verifyOTP()">Verify Code</button>
+      <div class="resend">
+        Didn't receive code? <button id="resendBtn" onclick="sendOTP()" disabled>Resend in <span id="countdown">60</span>s</button>
+      </div>
+      <button class="btn-secondary" onclick="goBack()">← Back</button>
+    </div>
+    
+    <!-- Step 3: Confirm Deletion -->
+    <div id="step3" class="card hidden">
+      <p class="step-title">Confirm Account Deletion</p>
+      <div class="warning">
+        <p class="warning-title">⚠️ This action is permanent</p>
+        <p class="warning-text">
+          Deleting your account will:<br>
+          • Remove all your data and chat history<br>
+          • Cancel any active subscriptions<br>
+          • Delete your AI assistant permanently<br><br>
+          This cannot be undone.
+        </p>
+      </div>
+      <div id="message3" class="message hidden"></div>
+      <button class="btn-danger" onclick="deleteAccount()">Delete My Account</button>
+      <button class="btn-secondary" onclick="cancel()">Cancel</button>
+    </div>
+    
+    <!-- Step 4: Success -->
+    <div id="step4" class="card hidden">
+      <p style="font-size: 48px; margin-bottom: 16px;">👋</p>
+      <p class="step-title">Account Deleted</p>
+      <p style="color: #888; font-size: 14px; line-height: 1.5;">
+        Your account has been successfully deleted. We're sorry to see you go.<br><br>
+        You can uninstall the HeyClaw app from your device.
+      </p>
+    </div>
+    
+    <p class="footer">
+      <a href="https://heyclaw.xyz">HeyClaw</a> • <a href="mailto:support@heyclaw.xyz">Contact Support</a>
+    </p>
+  </div>
+  
+  <script>
+    const API_URL = 'https://api.heyclaw.xyz';
+    let userEmail = '';
+    let verificationToken = '';
+    let countdownTimer = null;
+    
+    function showMessage(stepNum, text, type) {
+      const el = document.getElementById(`message${stepNum}`);
+      el.textContent = text;
+      el.className = `message ${type}`;
+      el.classList.remove('hidden');
+    }
+    
+    function hideMessage(stepNum) {
+      document.getElementById(`message${stepNum}`).classList.add('hidden');
+    }
+    
+    function showStep(num) {
+      for (let i = 1; i <= 4; i++) {
+        document.getElementById(`step${i}`).classList.toggle('hidden', i !== num);
+      }
+    }
+    
+    function startCountdown() {
+      let seconds = 60;
+      const btn = document.getElementById('resendBtn');
+      const countdown = document.getElementById('countdown');
+      btn.disabled = true;
+      
+      countdownTimer = setInterval(() => {
+        seconds--;
+        countdown.textContent = seconds;
+        if (seconds <= 0) {
+          clearInterval(countdownTimer);
+          btn.disabled = false;
+          btn.innerHTML = 'Resend';
+        }
+      }, 1000);
+    }
+    
+    async function sendOTP() {
+      const email = document.getElementById('email').value.trim();
+      if (!email || !email.includes('@')) {
+        showMessage(1, 'Please enter a valid email address', 'error');
+        return;
+      }
+      
+      hideMessage(1);
+      userEmail = email;
+      
+      try {
+        const res = await fetch(`${API_URL}/auth/delete-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          showMessage(1, data.message || 'Failed to send code', 'error');
+          return;
+        }
+        
+        document.getElementById('emailDisplay').textContent = email;
+        document.getElementById('otp').value = '';
+        showStep(2);
+        startCountdown();
+        
+      } catch (err) {
+        showMessage(1, 'Network error. Please try again.', 'error');
+      }
+    }
+    
+    async function verifyOTP() {
+      const otp = document.getElementById('otp').value.trim();
+      if (!otp || otp.length !== 6) {
+        showMessage(2, 'Please enter the 6-digit code', 'error');
+        return;
+      }
+      
+      hideMessage(2);
+      
+      try {
+        const res = await fetch(`${API_URL}/auth/delete-verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: userEmail, code: otp })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          showMessage(2, data.message || 'Invalid code', 'error');
+          return;
+        }
+        
+        verificationToken = data.token;
+        showStep(3);
+        
+      } catch (err) {
+        showMessage(2, 'Network error. Please try again.', 'error');
+      }
+    }
+    
+    async function deleteAccount() {
+      hideMessage(3);
+      
+      try {
+        const res = await fetch(`${API_URL}/auth/delete-confirm`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${verificationToken}`
+          },
+          body: JSON.stringify({ email: userEmail })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          showMessage(3, data.message || 'Failed to delete account', 'error');
+          return;
+        }
+        
+        showStep(4);
+        
+      } catch (err) {
+        showMessage(3, 'Network error. Please try again.', 'error');
+      }
+    }
+    
+    function goBack() {
+      if (countdownTimer) clearInterval(countdownTimer);
+      showStep(1);
+    }
+    
+    function cancel() {
+      window.location.href = 'https://heyclaw.xyz';
+    }
+    
+    // Auto-focus and handle enter key
+    document.getElementById('email').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendOTP();
+    });
+    
+    document.getElementById('otp').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') verifyOTP();
+    });
+    
+    // Only allow numbers in OTP input
+    document.getElementById('otp').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '');
+    });
+  </script>
+</body>
+</html>

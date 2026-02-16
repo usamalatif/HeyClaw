@@ -19,6 +19,7 @@ prepare_react_native_project!
 setup_permissions([
   'Microphone',
   'SpeechRecognition',
+  'PhotoLibrary',
 ])
 
 linkage = ENV['USE_FRAMEWORKS']

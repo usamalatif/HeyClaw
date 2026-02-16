@@ -50,7 +50,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
         }
       },
       tools: {
-        deny: ['exec', 'process', 'browser', 'canvas', 'cron', 'nodes', 'gateway']
+        deny: ['gateway']  // Only block gateway control, allow everything else
+      },
+      browser: {
+        enabled: true,
+        headless: true,
+        executablePath: '/usr/bin/chromium',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
       },
       agents: {
         defaults: {

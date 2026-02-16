@@ -29,7 +29,7 @@
 		}
 	},
 	"tools": {
-		"deny": ["gateway"]
+		"deny": ["gateway", "web_search", "web_fetch"]
 	},
 	"browser": {
 		"enabled": true,

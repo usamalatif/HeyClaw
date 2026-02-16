@@ -56,11 +56,16 @@ interface OpenClawResponse {
   }>;
 }
 
-function getHeaders(agentId: string): Record<string, string> {
+function getHeaders(agentId: string, sessionKey?: string): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-openclaw-agent-id': agentId,
   };
+  // Session key ensures each user gets their own conversation context
+  // Without this, all API requests share the same session!
+  if (sessionKey) {
+    headers['x-openclaw-session-key'] = sessionKey;
+  }
   const token = getGatewayToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -69,14 +74,16 @@ function getHeaders(agentId: string): Record<string, string> {
 }
 
 // Send a message to a specific agent on the shared gateway (with retry)
+// sessionKey should be unique per user (e.g., `user-${userId}`) to isolate conversations
 export async function sendToOpenClaw(
   agentId: string,
   messages: OpenClawMessage[],
+  sessionKey?: string,
 ): Promise<string> {
   return withRetry(async () => {
     const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
       method: 'POST',
-      headers: getHeaders(agentId),
+      headers: getHeaders(agentId, sessionKey),
       body: JSON.stringify({
         messages,
         model: 'openclaw',
@@ -95,13 +102,15 @@ export async function sendToOpenClaw(
 }
 
 // Stream a response from a specific agent on the shared gateway
+// sessionKey should be unique per user (e.g., `user-${userId}`) to isolate conversations
 export async function* streamFromOpenClaw(
   agentId: string,
   messages: OpenClawMessage[],
+  sessionKey?: string,
 ): AsyncGenerator<string> {
   const res = await fetch(`${GATEWAY_URL()}/v1/chat/completions`, {
     method: 'POST',
-    headers: getHeaders(agentId),
+    headers: getHeaders(agentId, sessionKey),
     body: JSON.stringify({
       messages,
       model: 'openclaw',

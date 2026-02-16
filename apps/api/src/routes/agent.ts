@@ -66,8 +66,9 @@ agentRoutes.post('/message', rateLimitMiddleware, async c => {
   }
 
   const agentId = await getAgentId(userId);
+  const sessionKey = `user-${userId}`; // Unique session per user
 
-  const response = await sendToOpenClaw(agentId, [{role: 'user', content: text}]);
+  const response = await sendToOpenClaw(agentId, [{role: 'user', content: text}], sessionKey);
 
   // Parse and strip action markers
   const { cleanText, actions } = parseActions(response);
@@ -218,7 +219,8 @@ agentRoutes.post('/voice', rateLimitMiddleware, async (c) => {
         });
       };
 
-      const openclawStream = streamFromOpenClaw(agentId, [{role: 'user', content: text}]);
+      const sessionKey = `user-${userId}`; // Unique session per user
+      const openclawStream = streamFromOpenClaw(agentId, [{role: 'user', content: text}], sessionKey);
       for await (const chunk of openclawStream) {
         buffer += chunk;
         fullText += chunk;

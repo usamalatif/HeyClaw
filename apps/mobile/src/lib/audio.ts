@@ -230,10 +230,9 @@ let voiceEngineReady = false;
 /**
  * Warm up the Voice engine so first recognition starts instantly.
  * Call this when HomeScreen mounts (after permissions are granted).
- * Does a quick start/stop cycle to initialize the speech recognizer.
  * 
- * NOTE: We do NOT call Voice.destroy() - that would reset the module
- * and cause issues with the first real recognition attempt.
+ * NOTE: We just check availability - don't actually start/stop as that
+ * can interfere with the first real recognition attempt.
  */
 export async function warmUpVoice(): Promise<void> {
   if (voiceEngineReady) {
@@ -241,28 +240,15 @@ export async function warmUpVoice(): Promise<void> {
     return;
   }
   
-  console.log('[Voice] Warming up engine...');
+  console.log('[Voice] Checking voice availability...');
   
   try {
-    // Quick start/stop cycle to initialize the recognizer
-    // Don't destroy - leave the engine in a ready state
-    await Voice.start('en-US');
-    console.log('[Voice] Warm-up start succeeded');
-    await new Promise(resolve => setTimeout(resolve, 200));
-    await Voice.stop();
-    console.log('[Voice] Warm-up stop succeeded');
-    
+    const available = await Voice.isAvailable();
+    console.log('[Voice] Voice available:', available);
     voiceEngineReady = true;
-    console.log('[Voice] Engine warmed up successfully');
   } catch (err: any) {
-    console.log('[Voice] Warm-up error (may still work):', err.message);
-    // Even if warm-up fails, mark as ready so we don't keep retrying
-    voiceEngineReady = true;
-    
-    // Try to clean up gracefully
-    try {
-      await Voice.stop();
-    } catch {}
+    console.log('[Voice] Availability check error:', err.message);
+    voiceEngineReady = true; // Assume ready, let startSpeechRecognition handle errors
   }
 }
 
@@ -271,55 +257,20 @@ export async function warmUpVoice(): Promise<void> {
  * Call this during onboarding/setup so voice works on first use.
  * Returns true if permissions are granted.
  * 
- * NOTE: We avoid Voice.destroy() as it can leave the module in a bad state.
- * Just start/stop to trigger permission dialogs and verify they work.
+ * NOTE: SetupScreen now uses react-native-permissions for explicit permission requests.
+ * This function just verifies Voice module is available after permissions are granted.
  */
 export async function requestVoicePermissions(): Promise<boolean> {
-  console.log('[Voice] Requesting permissions...');
+  console.log('[Voice] Verifying voice availability after permissions...');
   
-  // Retry loop to handle permission dialog timing
-  const MAX_ATTEMPTS = 6;
-  const ATTEMPT_DELAY = 1000; // 1 second between attempts, total ~6s
-  
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      if (attempt > 0) {
-        // Just stop, don't destroy
-        await Voice.stop().catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, ATTEMPT_DELAY));
-        console.log(`[Voice] Permission check attempt ${attempt + 1}...`);
-      }
-      
-      // Try to start - this triggers permission dialogs on first run
-      await Voice.start('en-US');
-      
-      // If we get here, permissions are granted!
-      await Voice.stop();
-      // Don't destroy - leave engine ready for warmUpVoice
-      
-      console.log('[Voice] Permissions granted');
-      voiceEngineReady = true; // Mark as ready since we just tested it
-      return true;
-    } catch (err: any) {
-      console.log(`[Voice] Attempt ${attempt + 1} error:`, err.message);
-      
-      // If user explicitly denied, stop retrying
-      if (err.message?.toLowerCase().includes('denied') && 
-          !err.message?.toLowerCase().includes('busy')) {
-        console.log('[Voice] Permission denied by user');
-        return false;
-      }
-      // Otherwise keep trying (dialog might still be showing)
-    }
-  }
-  
-  // Final check
   try {
-    const isAvailable = await Voice.isAvailable();
-    const available = isAvailable === 1 || isAvailable === true;
-    console.log('[Voice] Final availability check:', available);
-    return available;
-  } catch {
+    const available = await Voice.isAvailable();
+    const isAvailable = available === 1 || available === true;
+    console.log('[Voice] Voice module available:', isAvailable);
+    voiceEngineReady = isAvailable;
+    return isAvailable;
+  } catch (err: any) {
+    console.log('[Voice] Availability check error:', err.message);
     return false;
   }
 }
@@ -339,20 +290,31 @@ export async function startSpeechRecognition(
   recognitionCallback = onPartialResult;
   recognitionFinalText = '';
 
+  // Set up callbacks BEFORE starting
+  Voice.onSpeechStart = () => {
+    console.log('[Voice] onSpeechStart fired');
+  };
+  
+  Voice.onSpeechEnd = () => {
+    console.log('[Voice] onSpeechEnd fired');
+  };
+
   Voice.onSpeechResults = (e: SpeechResultsEvent) => {
     const text = e.value?.[0] || '';
+    console.log('[Voice] onSpeechResults:', text);
     recognitionFinalText = text;
     recognitionCallback?.(text);
   };
 
   Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
     const text = e.value?.[0] || '';
+    console.log('[Voice] onSpeechPartialResults:', text);
     recognitionCallback?.(text);
   };
 
   // Handle errors (permissions denied, etc.)
   Voice.onSpeechError = (e: any) => {
-    console.log('[Voice] Speech error:', e?.error?.code, e?.error?.message);
+    console.log('[Voice] onSpeechError:', e?.error?.code, e?.error?.message);
   };
 
   // Try to start voice recognition with retries for permission dialogs

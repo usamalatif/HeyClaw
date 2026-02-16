@@ -1,18 +1,21 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Text, Image, StyleSheet, Animated, Easing} from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  Animated,
+  Easing,
+  TouchableOpacity,
+  Platform,
+} from 'react-native';
 import {requestVoicePermissions} from '../lib/audio';
 import {requestNotificationPermission} from '../lib/notifications';
+import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
 
 const clawIcon = require('../assets/icon.png');
 
-const SETUP_STEPS = [
-  'Creating your AI assistant...',
-  'Setting up workspace...',
-  'Configuring voice...',
-  'Almost ready...',
-];
-
-const MIN_DISPLAY_MS = 6000;
+type SetupPhase = 'loading' | 'permissions' | 'finalizing' | 'ready';
 
 interface SetupScreenProps {
   onReady: () => void;
@@ -20,11 +23,14 @@ interface SetupScreenProps {
 }
 
 export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) {
-  const [stepIndex, setStepIndex] = useState(0);
+  const [phase, setPhase] = useState<SetupPhase>('loading');
+  const [micGranted, setMicGranted] = useState(false);
+  const [speechGranted, setSpeechGranted] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const readyRef = useRef(false);
-  const minTimeRef = useRef(false);
+  const profileLoadedRef = useRef(false);
 
   // Logo pulse animation
   useEffect(() => {
@@ -57,47 +63,162 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
     }).start();
   }, [fadeAnim]);
 
-  // Step through messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStepIndex(prev => {
-        if (prev < SETUP_STEPS.length - 1) return prev + 1;
-        return prev;
-      });
-    }, 1800);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Request permissions during setup (step 2 = "Configuring voice...")
-  useEffect(() => {
-    if (stepIndex === 2) {
-      // Request voice (mic + speech recognition) permissions
-      requestVoicePermissions().catch(console.error);
-      // Request notification permissions
-      requestNotificationPermission().catch(console.error);
-    }
-  }, [stepIndex]);
-
-  // Minimum display time
+  // Initial loading phase - show for 2 seconds then move to permissions
   useEffect(() => {
     const timer = setTimeout(() => {
-      minTimeRef.current = true;
-      if (readyRef.current) {
-        onReady();
-      }
-    }, MIN_DISPLAY_MS);
+      setPhase('permissions');
+    }, 2000);
     return () => clearTimeout(timer);
-  }, [onReady]);
+  }, []);
 
-  // Check if profile loaded + min time passed
+  // Check initial permission status
+  useEffect(() => {
+    if (phase === 'permissions') {
+      checkPermissions();
+    }
+  }, [phase]);
+
+  // Track profile loaded
   useEffect(() => {
     if (profileLoaded) {
-      readyRef.current = true;
-      if (minTimeRef.current) {
-        onReady();
-      }
+      profileLoadedRef.current = true;
     }
-  }, [profileLoaded, onReady]);
+  }, [profileLoaded]);
+
+  // When both permissions granted, move to finalizing
+  useEffect(() => {
+    if (micGranted && speechGranted && phase === 'permissions') {
+      setPhase('finalizing');
+      
+      // Request notification permission in background (optional, don't block)
+      requestNotificationPermission().catch(() => {});
+      
+      // Wait a moment then complete
+      setTimeout(() => {
+        if (profileLoadedRef.current) {
+          onReady();
+        } else {
+          // Wait for profile to load
+          setPhase('ready');
+        }
+      }, 1500);
+    }
+  }, [micGranted, speechGranted, phase, onReady]);
+
+  // If in ready phase and profile loads, complete
+  useEffect(() => {
+    if (phase === 'ready' && profileLoaded) {
+      onReady();
+    }
+  }, [phase, profileLoaded, onReady]);
+
+  const checkPermissions = async () => {
+    if (Platform.OS === 'ios') {
+      const micStatus = await check(PERMISSIONS.IOS.MICROPHONE);
+      const speechStatus = await check(PERMISSIONS.IOS.SPEECH_RECOGNITION);
+      
+      setMicGranted(micStatus === RESULTS.GRANTED);
+      setSpeechGranted(speechStatus === RESULTS.GRANTED);
+    }
+  };
+
+  const handleRequestPermissions = async () => {
+    if (requesting) return;
+    setRequesting(true);
+
+    try {
+      if (Platform.OS === 'ios') {
+        // Request microphone first
+        if (!micGranted) {
+          const micResult = await request(PERMISSIONS.IOS.MICROPHONE);
+          setMicGranted(micResult === RESULTS.GRANTED);
+        }
+
+        // Then speech recognition
+        if (!speechGranted) {
+          const speechResult = await request(PERMISSIONS.IOS.SPEECH_RECOGNITION);
+          setSpeechGranted(speechResult === RESULTS.GRANTED);
+        }
+
+        // Warm up Voice engine after permissions granted
+        await requestVoicePermissions();
+      }
+    } catch (err) {
+      console.error('[Setup] Permission request error:', err);
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const renderContent = () => {
+    switch (phase) {
+      case 'loading':
+        return (
+          <>
+            <Text style={styles.statusText}>Creating your AI assistant...</Text>
+            <View style={styles.progressBar}>
+              <Animated.View style={[styles.progressFill, {width: '30%'}]} />
+            </View>
+          </>
+        );
+
+      case 'permissions':
+        return (
+          <>
+            <Text style={styles.permissionTitle}>Enable Voice</Text>
+            <Text style={styles.permissionDesc}>
+              HeyClaw needs microphone and speech recognition to hear you.
+            </Text>
+
+            <View style={styles.permissionList}>
+              <View style={styles.permissionItem}>
+                <Text style={styles.permissionIcon}>{micGranted ? '✓' : '🎤'}</Text>
+                <Text style={[styles.permissionLabel, micGranted && styles.permissionGranted]}>
+                  Microphone {micGranted ? '(granted)' : ''}
+                </Text>
+              </View>
+              <View style={styles.permissionItem}>
+                <Text style={styles.permissionIcon}>{speechGranted ? '✓' : '🗣️'}</Text>
+                <Text style={[styles.permissionLabel, speechGranted && styles.permissionGranted]}>
+                  Speech Recognition {speechGranted ? '(granted)' : ''}
+                </Text>
+              </View>
+            </View>
+
+            {(!micGranted || !speechGranted) && (
+              <TouchableOpacity
+                style={[styles.permissionButton, requesting && styles.permissionButtonDisabled]}
+                onPress={handleRequestPermissions}
+                disabled={requesting}>
+                <Text style={styles.permissionButtonText}>
+                  {requesting ? 'Requesting...' : 'Allow Permissions'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        );
+
+      case 'finalizing':
+        return (
+          <>
+            <Text style={styles.statusText}>Setting up voice...</Text>
+            <View style={styles.progressBar}>
+              <Animated.View style={[styles.progressFill, {width: '80%'}]} />
+            </View>
+          </>
+        );
+
+      case 'ready':
+        return (
+          <>
+            <Text style={styles.statusText}>Almost ready...</Text>
+            <View style={styles.progressBar}>
+              <Animated.View style={[styles.progressFill, {width: '95%'}]} />
+            </View>
+          </>
+        );
+    }
+  };
 
   return (
     <Animated.View style={[styles.container, {opacity: fadeAnim}]}>
@@ -107,32 +228,7 @@ export default function SetupScreen({onReady, profileLoaded}: SetupScreenProps) 
 
       <Text style={styles.title}>HeyClaw</Text>
 
-      <View style={styles.stepsContainer}>
-        {SETUP_STEPS.map((step, i) => (
-          <Animated.Text
-            key={step}
-            style={[
-              styles.stepText,
-              i < stepIndex && styles.stepDone,
-              i === stepIndex && styles.stepActive,
-              i > stepIndex && styles.stepPending,
-            ]}>
-            {i < stepIndex ? '\u2713 ' : i === stepIndex ? '\u25CB ' : '  '}
-            {step}
-          </Animated.Text>
-        ))}
-      </View>
-
-      <View style={styles.progressBar}>
-        <Animated.View
-          style={[
-            styles.progressFill,
-            {
-              width: `${Math.min(((stepIndex + 1) / SETUP_STEPS.length) * 100, 100)}%`,
-            },
-          ]}
-        />
-      </View>
+      {renderContent()}
     </Animated.View>
   );
 }
@@ -157,23 +253,10 @@ const styles = StyleSheet.create({
     color: '#ff6b35',
     marginBottom: 48,
   },
-  stepsContainer: {
-    alignSelf: 'stretch',
-    marginBottom: 32,
-  },
-  stepText: {
+  statusText: {
     fontSize: 16,
-    marginBottom: 14,
-    fontWeight: '500',
-  },
-  stepDone: {
-    color: '#4ade80',
-  },
-  stepActive: {
-    color: '#fff',
-  },
-  stepPending: {
-    color: '#444',
+    color: '#999',
+    marginBottom: 24,
   },
   progressBar: {
     width: '100%',
@@ -186,5 +269,57 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#ff6b35',
     borderRadius: 2,
+  },
+  permissionTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 12,
+  },
+  permissionDesc: {
+    fontSize: 15,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  permissionList: {
+    width: '100%',
+    marginBottom: 32,
+  },
+  permissionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  permissionIcon: {
+    fontSize: 24,
+    marginRight: 16,
+  },
+  permissionLabel: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  permissionGranted: {
+    color: '#4ade80',
+  },
+  permissionButton: {
+    backgroundColor: '#ff6b35',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 30,
+  },
+  permissionButtonDisabled: {
+    opacity: 0.6,
+  },
+  permissionButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

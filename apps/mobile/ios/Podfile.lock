@@ -2642,6 +2642,34 @@ PODS:
     - RNNotifee/NotifeeCore (= 9.1.8)
   - RNNotifee/NotifeeCore (9.1.8):
     - React-Core
+  - RNPermissions (5.4.4):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
   - RNScreens (4.23.0):
     - boost
     - DoubleConversion
@@ -2793,6 +2821,7 @@ DEPENDENCIES:
   - RNIap (from `../node_modules/react-native-iap`)
   - RNKeychain (from `../../../node_modules/react-native-keychain`)
   - "RNNotifee (from `../../../node_modules/@notifee/react-native`)"
+  - RNPermissions (from `../../../node_modules/react-native-permissions`)
   - RNScreens (from `../../../node_modules/react-native-screens`)
   - SocketRocket (~> 0.7.1)
   - TextToSpeech (from `../../../node_modules/react-native-tts`)
@@ -2975,6 +3004,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native-keychain"
   RNNotifee:
     :path: "../../../node_modules/@notifee/react-native"
+  RNPermissions:
+    :path: "../../../node_modules/react-native-permissions"
   RNScreens:
     :path: "../../../node_modules/react-native-screens"
   TextToSpeech:
@@ -3069,11 +3100,12 @@ SPEC CHECKSUMS:
   RNIap: 2211fa23d93d675884591ff224db67b02fa900b7
   RNKeychain: 483402cf2b90647eb0cf569cebbc069d32addea4
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
+  RNPermissions: d870f76fd755a20d2985b33869c39b17e52c78fa
   RNScreens: afaf526a9c804c3b4503f950cf3e67ed81e29ada
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b
   Yoga: 5456bb010373068fc92221140921b09d126b116e
 
-PODFILE CHECKSUM: 62bc657c65242f594f32fb5c871f573ce44b16b4
+PODFILE CHECKSUM: a4035db26813295165b7f650c0fcc8054188bc27
 
 COCOAPODS: 1.16.2

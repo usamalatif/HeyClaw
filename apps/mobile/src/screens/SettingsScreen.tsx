@@ -9,6 +9,8 @@ import {
   Linking,
 } from 'react-native';
 
+import Analytics from '../lib/analytics';
+
 const SUPPORT_EMAIL = 'hi@weiblocks.io';
 import {useAuthStore, useVoiceStore, useChatStore} from '../lib/store';
 import {api} from '../lib/api';
@@ -50,6 +52,7 @@ export default function SettingsScreen() {
         ...profile!,
         voice,
       });
+      Analytics.logVoiceChange(voice);
     } catch (err: any) {
       Alert.alert('Error', err.message);
     } finally {

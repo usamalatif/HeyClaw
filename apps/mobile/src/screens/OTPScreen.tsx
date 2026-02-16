@@ -14,6 +14,7 @@ import {useNavigation, useRoute, RouteProp} from '@react-navigation/native';
 import {api} from '../lib/api';
 import {saveTokens} from '../lib/auth';
 import {useAuthStore} from '../lib/store';
+import Analytics from '../lib/analytics';
 import type {AuthStackParamList} from '../navigation/AuthNavigator';
 
 type OTPScreenRouteProp = RouteProp<AuthStackParamList, 'OTP'>;
@@ -73,9 +74,16 @@ export default function OTPScreen() {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
+      
+      // Track auth event
       if (isSignUp) {
         setIsNewUser(true);
+        Analytics.logSignUp('email_otp');
+      } else {
+        Analytics.logLogin('email_otp');
       }
+      Analytics.setUserId(data.user?.id || email);
+      
       setAuthenticated(true);
     } catch (err: any) {
       Alert.alert('Invalid Code', err.message || 'Please check your code and try again');

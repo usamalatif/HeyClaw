@@ -21,6 +21,7 @@ const clawIcon = require('../assets/icon.png');
 import {api} from '../lib/api';
 import {saveTokens} from '../lib/auth';
 import {useAuthStore} from '../lib/store';
+import Analytics from '../lib/analytics';
 import type {AuthStackParamList} from '../navigation/AuthNavigator';
 
 type NavigationProp = NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -87,9 +88,15 @@ export default function LoginScreen() {
         refreshToken: data.refreshToken,
       });
 
+      // Track auth event
       if (data.isNewUser) {
         setIsNewUser(true);
+        Analytics.logSignUp('apple');
+      } else {
+        Analytics.logLogin('apple');
       }
+      Analytics.setUserId(data.user?.id || 'apple_user');
+      
       setAuthenticated(true);
     } catch (err: any) {
       if (err.code !== appleAuth.Error.CANCELED) {

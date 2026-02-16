@@ -9,6 +9,7 @@ import {
 } from './audio';
 import {notifyResponseReady, scheduleReminder} from './notifications';
 import {API_URL} from './config';
+import Analytics from './analytics';
 
 // Full voice conversation flow:
 // 1. On-device speech recognition (push-to-talk)
@@ -246,6 +247,9 @@ export function useVoiceFlow() {
         setLastResponse(null);
         setLastTranscription(transcribedText);
 
+        // Track voice message
+        Analytics.logVoiceMessage(recordingDuration || 0);
+
         // Add user voice message to chat history
         const userMsgId = Date.now().toString();
         useChatStore.getState().addMessage({
@@ -268,6 +272,10 @@ export function useVoiceFlow() {
             content: finalResponse,
             isVoice: true,
           });
+          
+          // Track response
+          const wordCount = finalResponse.trim().split(/\s+/).length;
+          Analytics.logVoiceResponse(Math.ceil(wordCount / 2.5), wordCount);
         }
       } catch (err: any) {
         console.error('Voice flow error:', err.message);

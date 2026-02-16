@@ -325,6 +325,17 @@ export async function startSpeechRecognition(
   
   console.log('[Voice] startSpeechRecognition called, voiceEngineReady:', voiceEngineReady);
   
+  // Full reset to ensure clean state - this is critical for first-tap to work
+  try {
+    await Voice.destroy();
+    console.log('[Voice] Destroyed previous session');
+  } catch {
+    // Ignore - might not have been active
+  }
+  
+  // Small delay to let audio session fully reset
+  await new Promise(resolve => setTimeout(resolve, 150));
+  
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) {
@@ -337,6 +348,9 @@ export async function startSpeechRecognition(
       console.log(`[Voice] Calling Voice.start() attempt ${attempt + 1}`);
       await Voice.start('en-US');
       console.log(`[Voice] Voice.start() succeeded on attempt ${attempt + 1}`);
+      
+      // Another small delay to let the recognizer fully initialize
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       return; // Success!
     } catch (err: any) {

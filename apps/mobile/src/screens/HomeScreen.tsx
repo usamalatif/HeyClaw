@@ -13,7 +13,7 @@ const clawIcon = require('../assets/icon.png');
 import {useAuthStore, useVoiceStore} from '../lib/store';
 import PaywallModal from '../components/PaywallModal';
 import {useVoiceFlow} from '../lib/useVoiceFlow';
-import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition} from '../lib/audio';
+import {startSpeechRecognition, stopSpeechRecognition, cancelSpeechRecognition, warmUpVoice} from '../lib/audio';
 import VoiceOrb from '../components/VoiceOrb';
 
 // Renders text with **bold** markdown support
@@ -45,6 +45,17 @@ export default function HomeScreen() {
   const recordingStartRef = useRef<number>(0);
 
   const hasVoice = (profile?.dailyVoiceSeconds ?? 0) < (profile?.dailyVoiceLimit ?? 300);
+  const voiceWarmedUp = useRef(false);
+
+  // Warm up Voice engine on mount so first "hold to talk" works instantly
+  useEffect(() => {
+    if (!voiceWarmedUp.current) {
+      voiceWarmedUp.current = true;
+      warmUpVoice().catch(err => {
+        console.log('[HomeScreen] Voice warm-up failed:', err.message);
+      });
+    }
+  }, []);
 
   const getStatusText = () => {
     if (isRecording) return 'Listening...';

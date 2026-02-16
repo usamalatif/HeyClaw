@@ -225,6 +225,42 @@ export async function setNativeTtsVoice(rate?: number): Promise<void> {
 
 let recognitionCallback: ((text: string) => void) | null = null;
 let recognitionFinalText = '';
+let voiceEngineReady = false;
+
+/**
+ * Warm up the Voice engine so first recognition starts instantly.
+ * Call this when HomeScreen mounts (after permissions are granted).
+ * Does a quick start/stop cycle to initialize the speech recognizer.
+ */
+export async function warmUpVoice(): Promise<void> {
+  if (voiceEngineReady) {
+    console.log('[Voice] Engine already warm');
+    return;
+  }
+  
+  console.log('[Voice] Warming up engine...');
+  
+  try {
+    // Quick start/stop cycle to initialize the recognizer
+    await Voice.start('en-US');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await Voice.stop();
+    await Voice.destroy();
+    
+    voiceEngineReady = true;
+    console.log('[Voice] Engine warmed up successfully');
+  } catch (err: any) {
+    console.log('[Voice] Warm-up error (may still work):', err.message);
+    // Even if warm-up fails, mark as ready so we don't keep retrying
+    // The actual startSpeechRecognition has its own retry logic
+    voiceEngineReady = true;
+    
+    // Clean up
+    try {
+      await Voice.destroy();
+    } catch {}
+  }
+}
 
 /**
  * Request microphone and speech recognition permissions upfront.
